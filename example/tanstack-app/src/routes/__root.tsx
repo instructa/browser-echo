@@ -11,6 +11,7 @@ import { DefaultCatchBoundary } from '~/components/DefaultCatchBoundary'
 import { NotFound } from '~/components/NotFound'
 import appCss from '~/styles/app.css?url'
 import { seo } from '~/utils/seo'
+import { DevLogDemo } from '~/components/DevLogDemo'
 
 export const Route = createRootRoute({
   head: () => ({
@@ -69,6 +70,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
+        <DevLogDemo />
         <div className="p-2 flex gap-2 text-lg">
           <Link
             to="/"
