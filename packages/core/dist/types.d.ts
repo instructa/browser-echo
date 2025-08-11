@@ -8,6 +8,7 @@ interface InitBrowserEchoOptions {
         size?: number;
         interval?: number;
     };
+    stackMode?: 'full' | 'condensed' | 'none';
 }
 
 export type { BrowserLogLevel, InitBrowserEchoOptions };

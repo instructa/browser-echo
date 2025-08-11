@@ -3,7 +3,9 @@ import { defineBuildConfig } from 'unbuild';
 export default defineBuildConfig({
   entries: [
     './src/route',
-    './src/BrowserEchoScript'
+    './src/BrowserEchoScript',
+    './src/setup',
+    './src/client'
   ],
   declaration: true,
   clean: true,

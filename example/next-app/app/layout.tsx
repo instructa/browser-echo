@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import DevLogs from "./dev-logs";
-import DevLogDemo from "./dev-log-demo";
+import BrowserEchoScript from "@browser-echo/next/BrowserEchoScript";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,9 +25,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <DevLogs />
-        <DevLogDemo />
+      <head>
+        {process.env.NODE_ENV === "development" && (
+          <BrowserEchoScript route="/api/client-logs" />
+        )}
+      </head>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
         {children}
       </body>
     </html>

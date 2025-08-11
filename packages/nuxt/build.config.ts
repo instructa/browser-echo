@@ -8,5 +8,5 @@ export default defineBuildConfig({
   declaration: true,
   clean: true,
   rollup: { emitCJS: false },
-  externals: ['@nuxt/kit', 'h3', '@browser-echo/core']
+  externals: ['@nuxt/kit', '@nuxt/schema', 'h3', '@browser-echo/core']
 });

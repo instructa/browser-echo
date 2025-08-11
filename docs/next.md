@@ -1,6 +1,6 @@
 # Next.js (App Router) Guide
 
-Turbopack doesn’t use Vite, so we ship a tiny route handler and an early script to patch `console.*`.
+Turbopack doesn't use Vite, so we ship a tiny route handler and an early script to patch `console.*`.
 
 ## Install
 
@@ -8,7 +8,21 @@ Turbopack doesn’t use Vite, so we ship a tiny route handler and an early scrip
 pnpm add -D @browser-echo/next
 ```
 
-## Add the early script
+## Quick Setup (Recommended)
+
+Run the setup command to automatically create the route file:
+
+```bash
+npx @browser-echo/next setup
+# or
+pnpm dlx @browser-echo/next setup
+```
+
+This creates `app/api/client-logs/route.ts` with the necessary exports.
+
+## Manual Setup
+
+### Add the early script
 
 Render the script in your root layout head (dev‑only):
 
@@ -34,12 +48,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 Forward logs to your terminal via a dedicated route:
 
 ```ts
-// app/__client-logs/route.ts
+// app/api/client-logs/route.ts
 export { POST, runtime, dynamic } from '@browser-echo/next/route';
 ```
 
-* Route defaults to `/__client-logs`.
-* We set `runtime = 'nodejs'` and `dynamic = 'force-dynamic'` to ensure it runs on Node and isn’t cached.
+* Route defaults to `/__client-logs` but works better as `/api/client-logs` in Next.js 15+
+* We set `runtime = 'nodejs'` and `dynamic = 'force-dynamic'` to ensure it runs on Node and isn't cached.
 
 ### Customizing
 

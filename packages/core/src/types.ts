@@ -6,4 +6,5 @@ export interface InitBrowserEchoOptions {
   preserveConsole?: boolean;
   tag?: string;
   batch?: { size?: number; interval?: number };
+  stackMode?: 'full' | 'condensed' | 'none';
 }

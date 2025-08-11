@@ -1,4 +1,5 @@
 import Image from "next/image";
+import DevLogDemo from "./DevLogDemo";
 
 export default function Home() {
   return (
@@ -16,7 +17,7 @@ export default function Home() {
           <li className="mb-2 tracking-[-.01em]">
             Get started by editing{" "}
             <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
+              app/page.tsx
             </code>
             .
           </li>
@@ -50,6 +51,8 @@ export default function Home() {
             Read our docs
           </a>
         </div>
+
+        <DevLogDemo />
       </main>
       <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
         <a

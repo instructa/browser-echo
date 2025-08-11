@@ -74,7 +74,7 @@ function initBrowserEcho(opts = {}) {
   addEventListener("beforeunload", flush);
   function formatForWire(_level, args) {
     const text = args.map(safeFormat).join(" ");
-    const stack = captureStack();
+    const stack = captureStack(opts.stackMode ?? "full");
     const source = parseSource(stack);
     return { text, stack, source };
   }
@@ -109,12 +109,17 @@ function initBrowserEcho(opts = {}) {
       }
     }
   }
-  function captureStack() {
+  function captureStack(mode) {
+    if (mode === "none")
+      return "";
     try {
       const e = new Error();
       const lines = (e.stack || "").split("\n").slice(1);
       const isInternal = (l) => /initBrowserEcho|browser-echo|captureStack|safeFormat|enqueue|flush/.test(l);
-      return lines.filter((l) => !isInternal(l)).join("\n");
+      const appLines = lines.filter((l) => !isInternal(l));
+      if (mode === "condensed")
+        return appLines[0] ? appLines[0] : "";
+      return appLines.join("\n");
     } catch {
       return "";
     }

@@ -8,6 +8,9 @@ interface NuxtBrowserEchoOptions {
         size?: number;
         interval?: number;
     };
+    stackMode?: 'full' | 'condensed' | 'none';
 }
+declare const module: any;
 
+export { module as default };
 export type { NuxtBrowserEchoOptions };

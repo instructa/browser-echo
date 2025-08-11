@@ -4,9 +4,14 @@
   "type": "module",
   "sideEffects": false,
   "files": ["dist"],
+  "bin": {
+    "browser-echo-next-setup": "./dist/setup.mjs"
+  },
   "exports": {
     "./route": { "types": "./dist/route.d.ts", "default": "./dist/route.mjs" },
-    "./BrowserEchoScript": { "types": "./dist/BrowserEchoScript.d.ts", "default": "./dist/BrowserEchoScript.mjs" }
+    "./BrowserEchoScript": { "types": "./dist/BrowserEchoScript.d.ts", "default": "./dist/BrowserEchoScript.mjs" },
+    "./setup": { "default": "./dist/setup.mjs" },
+    "./client": { "types": "./dist/client.d.ts", "default": "./dist/client.mjs" }
   },
   "peerDependencies": {
     "next": ">=13.4.0",
