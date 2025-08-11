@@ -14,35 +14,17 @@ Stream browser `console.*` logs to your dev terminal and optional file logging.
 
 No production impact. Providers enable this across frameworks by injecting a tiny client patch and exposing a dev-only HTTP endpoint.
 
-## Packages
+## Quick start
 
-| Package | What it is | Who should install |
-| --- | --- | --- |
-| `@browser-echo/core` | Shared client patch (`initBrowserEcho`) | dependency of all providers |
-| `@browser-echo/vite` | Vite plugin with dev middleware + virtual module | TanStack Start, Vite + React, Vite + Vue |
-| `@browser-echo/nuxt` | Nuxt 3/4 module (Nitro server route + client plugin) | Nuxt users |
-| `@browser-echo/next` | Next.js App Router helper (route + early script) | Next.js (Turbopack) users |
-| `@browser-echo/vue` (optional) | Vue plugin helper (if you’re not using Vite plugin) | Vue (non‑Vite) |
-| `@browser-echo/react` (optional) | React provider component (if you’re not using Vite plugin) | React (non‑Vite) |
+| Framework | Quick Setup |
+| --- | --- |
+| TanStack / Vite (React/Vue) | [Installation Guide](packages/vite/README.md) |
+| Nuxt 3/4 | [Installation Guide](packages/nuxt/README.md) |
+| Next.js (App Router) | [Installation Guide](packages/next/README.md) |
+| Vue | [Installation Guide](packages/vue/README.md) |
+| React | [Installation Guide](packages/react/README.md) |
 
 > Framework users only install their provider + `@browser-echo/core`. No cross‑framework bloat.
-
-## Quick start matrix
-
-| Framework | Dev engine | Install | Steps |
-| --- | --- | --- | --- |
-| TanStack / Vite (React/Vue) | Vite | `pnpm add -D @browser-echo/vite` | Add plugin in `vite.config.ts`. If no `index.html`, import the virtual module manually. |
-| Nuxt 3/4 | Nitro (Vite for client dev) | `pnpm add -D @browser-echo/nuxt` | Add module in `nuxt.config.ts`. Route + client init are auto‑wired. |
-| Next.js (App Router) | Turbopack | `pnpm add -D @browser-echo/next` | Add `<BrowserEchoScript />` in `<head>` and export `POST` handler at `/__client-logs`. |
-| Vue (non‑Vite) | varies | `pnpm add -D @browser-echo/vue` | Use the Vue plugin helper. Provide your own dev route if not using Vite provider. |
-| React (non‑Vite) | varies | `pnpm add -D @browser-echo/react` | Use the React provider. Provide your own dev route if not using Vite provider. |
-
-- Detailed guides:
-  - [packages/vite/README.md](packages/vite/README.md) - Vite plugin (TanStack, React, Vue)
-  - [packages/react/README.md](packages/react/README.md) - React provider (non-Vite)
-  - [packages/vue/README.md](packages/vue/README.md) - Vue plugin (non-Vite)
-  - [packages/nuxt/README.md](packages/nuxt/README.md) - Nuxt 3/4 module
-  - [packages/next/README.md](packages/next/README.md) - Next.js App Router
 
 ## What you get
 
