@@ -4,6 +4,14 @@ Stream browser `console.*` logs to your Vite dev server terminal with colors, st
 
 This is a lightweight Vite plugin designed for SSR/SPA setups (TanStack Start, Nitro, Cloudflare, etc.). It only runs during `vite dev` and has no production impact.
 
+#### Frameworks
+
+| Framework | Dev engine | How to use |
+|---|---|---|
+| Next.js | Turbopack | See docs/next.md |
+| Nuxt | Nitro (Vite for client dev) | See docs/nuxt.md |
+| TanStack Start | Vite | See docs/tanstack.md |
+
 ## Installation
 
 Using pnpm:
