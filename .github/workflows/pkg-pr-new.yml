@@ -37,7 +37,7 @@ jobs:
           echo "Package directories:"
           find packages -name "package.json" | head -10
 
-      - name: Publish preview package
-        run: pnpm dlx pkg-pr-new publish
+      - name: Publish preview packages
+        run: pnpm dlx pkg-pr-new publish './packages/*'
 
 

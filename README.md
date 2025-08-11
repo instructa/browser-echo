@@ -1,5 +1,7 @@
 # Browser Echo
 
+![Browser Echo](public/banner.png)
+
 Stream browser `console.*` logs to your dev terminal and optional file logging.
 
 `browser-echo` makes it easy for you (and your AI coding assistant) to read client-side logs directly in the server terminal during development.
