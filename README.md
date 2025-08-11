@@ -8,9 +8,9 @@ This is a lightweight Vite plugin designed for SSR/SPA setups (TanStack Start, N
 
 | Framework | Dev engine | How to use |
 |---|---|---|
-| Next.js | Turbopack | See docs/next.md |
-| Nuxt | Nitro (Vite for client dev) | See docs/nuxt.md |
-| TanStack Start | Vite | See docs/tanstack.md |
+| Next.js | Turbopack | [docs/next.md](docs/next.md) |
+| Nuxt | Nitro (Vite for client dev) | [docs/nuxt.md](docs/nuxt.md) |
+| TanStack Start | Vite | [docs/tanstack.md](docs/tanstack.md) |
 
 ## Installation
 
