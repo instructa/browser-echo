@@ -8,9 +8,6 @@ export default defineNuxtConfig({
     plugins: [
       browserLogsToTerminal({
         injectHtml: false,
-        enabled: true,
-        route: '/__client-logs',
-        tag: '[nuxt-browser]',
       }),
     ],
   },

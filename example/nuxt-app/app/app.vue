@@ -39,6 +39,7 @@ onMounted(() => {
       </button>
     </div>
 
-    <NuxtWelcome />
+    <!-- Render current route page -->
+    <NuxtPage />
   </div>
 </template>
