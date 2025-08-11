@@ -3,6 +3,15 @@
   "version": "0.0.3-alpha.0",
   "type": "module",
   "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/instructa/browser-echo.git",
+    "directory": "packages/next"
+  },
+  "author": {
+    "name": "Kevin Kern",
+    "url": "https://github.com/regenrek"
+  },
   "files": [
     "dist"
   ],
@@ -32,7 +41,7 @@
     "react-dom": ">=18.0.0"
   },
   "dependencies": {
-    "@browser-echo/core": "^0.0.3-alpha.0"
+    "@browser-echo/core": "workspace:*"
   },
   "scripts": {
     "build": "unbuild",
