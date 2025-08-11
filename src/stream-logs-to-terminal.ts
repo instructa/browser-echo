@@ -35,6 +35,7 @@ export interface BrowserLogsToTerminalOptions {
   /**
    * Print (pretty indented) stack traces when available.
    * @default true
+   * @deprecated Use `stackMode` instead ('none' | 'condensed' | 'full').
    */
   showStack?: boolean;
   /**
@@ -452,11 +453,15 @@ if (!window[__INSTALLED_KEY]) {
   function captureStack() {
     try {
       const e = new Error();
-      if (!e.stack) return '';
-      const lines = e.stack.split('\\n');
-      // Drop the "Error" line + our wrapper frames (heuristic)
-      // Different engines have slightly different shapes; skip a few
-      return lines.slice(2).join('\\n');
+      const raw = e.stack || '';
+      // Drop the first "Error" line for cleaner output
+      const lines = raw.split('\\n').slice(1);
+      const isInternal = (l) =>
+        l.includes('virtual:browser-logs-to-terminal') ||
+        l.includes('/@id/__x00__virtual:browser-logs-to-terminal') ||
+        l.includes('/@id/virtual:browser-logs-to-terminal') ||
+        /formatForWire|safeFormat|captureStack|enqueue|flush/.test(l);
+      return lines.filter((l) => !isInternal(l)).join('\\n');
     } catch { return ''; }
   }
 

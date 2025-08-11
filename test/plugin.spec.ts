@@ -5,7 +5,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join as joinPath } from 'node:path';
 
-import browserLogsToTerminal from '../stream-logs-to-terminal';
+import browserLogsToTerminal from '../src/stream-logs-to-terminal';
 
 type Logger = {
   info: ReturnType<typeof vi.fn>;
