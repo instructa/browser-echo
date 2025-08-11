@@ -4,7 +4,7 @@ import { DefaultCatchBoundary } from './components/DefaultCatchBoundary'
 import { NotFound } from './components/NotFound'
 
 if (import.meta.env.DEV && typeof window !== 'undefined') {
-  void import('virtual:browser-logs-to-terminal')
+  void import('virtual:browser-echo')
 }
 
 export function createRouter() {
