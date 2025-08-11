@@ -27,7 +27,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      # Build step intentionally omitted as this repo has no build script
+      - name: Build package
+        run: pnpm build
 
       - name: Publish preview package
         run: pnpm dlx pkg-pr-new publish
