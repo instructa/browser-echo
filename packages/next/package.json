@@ -1,24 +1,39 @@
 {
   "name": "@browser-echo/next",
-  "version": "0.0.0",
+  "version": "0.0.3-alpha.0",
   "type": "module",
   "sideEffects": false,
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "bin": {
     "browser-echo-next-setup": "./dist/setup.mjs"
   },
   "exports": {
-    "./route": { "types": "./dist/route.d.ts", "default": "./dist/route.mjs" },
-    "./BrowserEchoScript": { "types": "./dist/BrowserEchoScript.d.ts", "default": "./dist/BrowserEchoScript.mjs" },
-    "./setup": { "default": "./dist/setup.mjs" },
-    "./client": { "types": "./dist/client.d.ts", "default": "./dist/client.mjs" }
+    "./route": {
+      "types": "./dist/route.d.ts",
+      "default": "./dist/route.mjs"
+    },
+    "./BrowserEchoScript": {
+      "types": "./dist/BrowserEchoScript.d.ts",
+      "default": "./dist/BrowserEchoScript.mjs"
+    },
+    "./setup": {
+      "default": "./dist/setup.mjs"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.mjs"
+    }
   },
   "peerDependencies": {
     "next": ">=13.4.0",
     "react": ">=18.0.0",
     "react-dom": ">=18.0.0"
   },
-  "dependencies": { "@browser-echo/core": "workspace:*" },
+  "dependencies": {
+    "@browser-echo/core": "^0.0.3-alpha.0"
+  },
   "scripts": {
     "build": "unbuild",
     "dev": "unbuild -w",
