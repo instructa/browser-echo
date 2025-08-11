@@ -34,7 +34,21 @@ function createMockServer(): {
     },
   } as unknown as ViteDevServer;
 
-  return { server, attach: (plugin) => plugin.configureServer?.(server), handlers };
+  return {
+    server,
+    attach: (plugin) => {
+      const hook = (plugin as any).configureServer;
+      if (!hook) return;
+      if (typeof hook === 'function') {
+        hook(server);
+      } else if (hook && typeof hook === 'object' && 'handler' in hook) {
+        try {
+          (hook as any).handler(server);
+        } catch {}
+      }
+    },
+    handlers,
+  };
 }
 
 function makeReq(method: string, url: string, body: any) {
@@ -125,7 +139,7 @@ describe('vite-browser-logs plugin - middleware logging', () => {
     expect(logger.warn).toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalled();
 
-    const firstInfo = String(logger.info.mock.calls[0][0]);
+    const firstInfo = String(logger.info.mock.calls[0]?.[0] ?? '');
     expect(firstInfo).toContain('[browser] [abcdef12] INFO: hello world');
     // condensed stack prints a single indented line
     const hasCondensed = logger.info.mock.calls.some((c) =>
@@ -157,7 +171,7 @@ describe('vite-browser-logs plugin - middleware logging', () => {
 
     const files = readdirSync(tmpDir).filter((f) => f.endsWith('.log'));
     expect(files.length).toBe(1);
-    const content = readFileSync(joinPath(tmpDir, files[0]), 'utf-8');
+    const content = readFileSync(joinPath(tmpDir, files[0]!), 'utf-8');
     expect(content).toContain('disk-write-check');
   });
 });
