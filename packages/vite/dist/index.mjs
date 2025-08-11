@@ -11,7 +11,7 @@ const DEFAULTS = {
   showSource: true,
   colors: true,
   injectHtml: true,
-  stackMode: "full",
+  stackMode: "condensed",
   batch: { size: 20, interval: 300 },
   truncate: 1e4,
   fileLog: { enabled: false, dir: "logs/frontend" }

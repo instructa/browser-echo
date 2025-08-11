@@ -1,11 +1,16 @@
-import { jsx } from 'react/jsx-runtime';
+import { jsx, Fragment } from 'react/jsx-runtime';
 import Script from 'next/script';
 
 function BrowserEchoScript(props) {
+  if (props.enabled === false) {
+    return /* @__PURE__ */ jsx(Fragment, {});
+  }
   const route = props.route ?? "/__client-logs";
   const include = JSON.stringify(props.include ?? ["log", "info", "warn", "error", "debug"]);
   const preserve = props.preserveConsole ?? true;
   const tag = props.tag ?? "[browser]";
+  const stackMode = props.stackMode ?? "condensed";
+  const showSource = props.showSource ?? true;
   const batchSize = props.batch?.size ?? 20;
   const batchInterval = props.batch?.interval ?? 300;
   const code = `
@@ -14,6 +19,7 @@ function BrowserEchoScript(props) {
   if (window.__browser_echo_installed__) return;
   window.__browser_echo_installed__ = true;
   var ROUTE=${JSON.stringify(route)}, INCLUDE=${include}, PRESERVE=${JSON.stringify(preserve)}, TAG=${JSON.stringify(tag)};
+  var STACK_MODE=${JSON.stringify(stackMode)}, SHOW_SOURCE=${JSON.stringify(showSource)};
   var BATCH_SIZE=${JSON.stringify(batchSize)}, BATCH_INTERVAL=${JSON.stringify(batchInterval)};
   var SESSION=(function(){try{var a=new Uint8Array(8);crypto.getRandomValues(a);return Array.from(a).map(b=>b.toString(16).padStart(2,'0')).join('')}catch{return String(Math.random()).slice(2,10)}})();
   var q=[],t=null;
@@ -32,13 +38,23 @@ function BrowserEchoScript(props) {
       if(typeof val==='symbol') return val.toString();
       if(val && typeof val==='object'){ if(seen.has(val)) return '[Circular]'; seen.add(val) } return val; }); }
     catch(e){ try{return String(v)}catch{return '[Unserializable]'} } }
-  function captureStack(){ try{ var e=new Error(), raw=e.stack||'', lines=raw.split('\\n').slice(1);
-    return lines.filter(l=>!/browser-echo|captureStack|safeFormat|enqueue|flush/.test(l)).join('\\n'); }catch{return ''} }
+  function captureStack(){ 
+    if(STACK_MODE === 'none') return '';
+    try{ 
+      var e=new Error(), raw=e.stack||'', lines=raw.split('\\n').slice(1);
+      var filtered = lines.filter(l=>!/browser-echo|captureStack|safeFormat|enqueue|flush/.test(l));
+      if(STACK_MODE === 'condensed') {
+        // Return only the first meaningful line for condensed mode
+        return filtered.slice(0, 1).join('\\n');
+      }
+      return filtered.join('\\n'); 
+    }catch{return ''} 
+  }
   function parseSource(stack){ if(!stack) return ''; var m=stack.match(/\\(?((?:file:\\/\\/|https?:\\/\\/|\\/)[^) \\n]+):(\\d+):(\\d+)\\)?/); return m? (m[1]+':'+m[2]+':'+m[3]) : '' }
   var ORIGINAL={}; for (var i=0;i<INCLUDE.length;i++){ (function(level){
     var orig=console[level]?console[level].bind(console):console.log.bind(console); ORIGINAL[level]=orig;
     console[level]=function(){ var args=[...arguments]; var text=args.map(safeFormat).join(' ');
-      var stack=captureStack(); var source=parseSource(stack);
+      var stack=captureStack(); var source=SHOW_SOURCE ? parseSource(stack) : '';
       enqueue({level:level,text:text,time:Date.now(),stack:stack,source:source});
       if(PRESERVE){ try{ orig.apply(console,args) }catch(e){} } }
   })(INCLUDE[i]) }

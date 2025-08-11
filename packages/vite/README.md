@@ -63,7 +63,7 @@ interface BrowserEchoViteOptions {
   tag?: string;                      // default: '[browser]'
   colors?: boolean;                  // default: true
   injectHtml?: boolean;              // default: true
-  stackMode?: 'none' | 'condensed' | 'full'; // default: 'full'
+  stackMode?: 'none' | 'condensed' | 'full'; // default: 'condensed'
   showSource?: boolean;              // default: true
   batch?: { size?: number; interval?: number }; // default: 20 / 300ms
   truncate?: number;                 // default: 10_000 chars

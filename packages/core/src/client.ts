@@ -76,7 +76,7 @@ export function initBrowserEcho(opts: InitBrowserEchoOptions = {}) {
 
   function formatForWire(_level: string, args: any[]) {
     const text = args.map(safeFormat).join(' ');
-    const stack = captureStack(opts.stackMode ?? 'full');
+    const stack = captureStack(opts.stackMode ?? 'condensed');
     const source = parseSource(stack);
     return { text, stack, source };
   }

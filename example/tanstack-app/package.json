@@ -27,7 +27,7 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
     "vite": "^6.3.5",
-    "@browser-echo/vite": "https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@6c6c871",
+    "@browser-echo/vite": "workspace:*",
     "vite-tsconfig-paths": "^5.1.4"
   }
 }

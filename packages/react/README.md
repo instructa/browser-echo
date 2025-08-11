@@ -102,7 +102,7 @@ interface BrowserEchoProviderProps {
   preserveConsole?: boolean;         // default: true
   tag?: string;                      // default: '[browser]'
   batch?: { size?: number; interval?: number }; // default: 20 / 300ms
-  stackMode?: 'full' | 'condensed' | 'none';    // default: 'full'
+  stackMode?: 'full' | 'condensed' | 'none';    // default: 'condensed'
 }
 ```
 

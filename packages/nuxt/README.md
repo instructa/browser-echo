@@ -52,14 +52,14 @@ interface BrowserEchoNuxtOptions {
   preserveConsole?: boolean;         // default: true
   tag?: string;                      // default: '[browser]'
   batch?: { size?: number; interval?: number }; // default: 20 / 300ms
-  stackMode?: 'full' | 'condensed' | 'none';    // default: 'full'
+  stackMode?: 'full' | 'condensed' | 'none';    // default: 'condensed'
 }
 ```
 
 ### Stack Mode Options
 
-- `full` (default): Send complete filtered stack trace
-- `condensed`: Send only the top application frame
+- `full`: Send complete filtered stack trace
+- `condensed` (default): Send only the top application frame
 - `none`: Do not send any stack frames
 
 ## Usage Example

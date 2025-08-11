@@ -31,6 +31,83 @@ pnpm dlx @browser-echo/next setup
 
 This creates `app/api/client-logs/route.ts` with the necessary exports.
 
+## Available Options
+
+Configure the `<BrowserEchoScript />` component with these options:
+
+```ts
+type BrowserLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
+
+interface BrowserEchoScriptProps {
+  enabled?: boolean;                 // default: true (dev only)
+  route?: `/${string}`;              // default: '/__client-logs'
+  include?: BrowserLogLevel[];       // default: ['log','info','warn','error','debug']
+  preserveConsole?: boolean;         // default: true (also keep logging in the browser)
+  tag?: string;                      // default: '[browser]'
+  // stacks
+  stackMode?: 'none' | 'condensed' | 'full'; // default: 'condensed'
+  showSource?: boolean;              // default: true (when available)
+  // batching
+  batch?: { size?: number; interval?: number }; // default: 20 / 300ms
+}
+```
+
+### Option Details
+
+- **`enabled`**: Toggle the entire functionality (automatically disabled in production)
+- **`route`**: The endpoint path where logs are sent (must match your route file location)
+- **`include`**: Which console methods to capture and forward
+- **`preserveConsole`**: Whether to keep original console behavior in the browser
+- **`tag`**: Prefix for terminal output to identify browser logs
+- **`stackMode`**: How much stack trace information to include
+  - `'none'`: No stack traces
+  - `'condensed'` (default): Essential stack info only
+  - `'full'`: Complete stack traces
+- **`showSource`**: Include source file location hints (file:line:col)
+- **`batch`**: Control log batching behavior
+  - `size`: Max logs per batch (default: 20)
+  - `interval`: Max time between batches in ms (default: 300)
+
+### Usage Example
+
+Here's how to use `<BrowserEchoScript />` with custom options:
+
+```tsx
+// app/layout.tsx
+import type { ReactNode } from 'react';
+import BrowserEchoScript from '@browser-echo/next/BrowserEchoScript';
+
+export default function RootLayout({ children }: { children: ReactNode }) {
+  return (
+    <html lang="en">
+      <head>
+        {process.env.NODE_ENV === 'development' && (
+          <BrowserEchoScript 
+            route="/api/client-logs"
+            include={['warn', 'error']}
+            preserveConsole={true}
+            tag="[NextJS Browser]"
+            stackMode="condensed"
+            showSource={true}
+            batch={{ size: 10, interval: 500 }}
+          />
+        )}
+      </head>
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+This configuration:
+- Sends logs to `/api/client-logs` endpoint
+- Only captures warnings and errors (filters out debug/info/log)
+- Keeps original console behavior in browser
+- Tags terminal output with `[NextJS Browser]`
+- Uses condensed stack traces for cleaner output
+- Shows source file locations
+- Batches up to 10 logs every 500ms
+
 ## Manual Setup
 
 ### 1. Add the early script
@@ -65,32 +142,6 @@ export { POST, runtime, dynamic } from '@browser-echo/next/route';
 
 - Route defaults to `/__client-logs` but works better as `/api/client-logs` in Next.js 15+
 - We set `runtime = 'nodejs'` and `dynamic = 'force-dynamic'` to ensure it runs on Node and isn't cached
-
-## Configuration
-
-Customize the script component with options:
-
-```tsx
-<BrowserEchoScript 
-  route="/__client-logs" 
-  include={['warn','error']} 
-  preserveConsole={true}
-  tag="[browser]" 
-/>
-```
-
-### Available Options
-
-```ts
-interface BrowserEchoScriptProps {
-  route?: `/${string}`;              // default: '/__client-logs'
-  include?: BrowserLogLevel[];       // default: ['log','info','warn','error','debug']
-  preserveConsole?: boolean;         // default: true
-  tag?: string;                      // default: '[browser]'
-  batch?: { size?: number; interval?: number }; // default: 20 / 300ms
-  stackMode?: 'full' | 'condensed' | 'none';    // default: 'full'
-}
-```
 
 ## Usage Example
 

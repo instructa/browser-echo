@@ -8,7 +8,8 @@ const module = defineNuxtModule({
     include: ["log", "info", "warn", "error", "debug"],
     preserveConsole: true,
     tag: "[browser]",
-    batch: { size: 20, interval: 300 }
+    batch: { size: 20, interval: 300 },
+    stackMode: "condensed"
   },
   setup(options, nuxt) {
     if (!nuxt.options.dev || options.enabled === false)
