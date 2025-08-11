@@ -3,6 +3,10 @@ import { routeTree } from './routeTree.gen'
 import { DefaultCatchBoundary } from './components/DefaultCatchBoundary'
 import { NotFound } from './components/NotFound'
 
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  void import('virtual:browser-logs-to-terminal')
+}
+
 export function createRouter() {
   const router = createTanStackRouter({
     routeTree,
