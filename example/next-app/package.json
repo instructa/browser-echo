@@ -23,6 +23,6 @@
     "eslint": "^9",
     "eslint-config-next": "15.4.6",
     "@eslint/eslintrc": "^3",
-    "@browser-echo/next": "workspace:*"
+    "@browser-echo/next": "https://pkg.pr.new/instructa/browser-echo/@browser-echo/next@e0bbe63"
   }
 }

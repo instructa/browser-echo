@@ -40,8 +40,8 @@ importers:
         version: 19.1.0(react@19.1.0)
     devDependencies:
       '@browser-echo/next':
-        specifier: workspace:*
-        version: link:../../packages/next
+        specifier: https://pkg.pr.new/instructa/browser-echo/@browser-echo/next@e0bbe63
+        version: https://pkg.pr.new/instructa/browser-echo/@browser-echo/next@e0bbe63(next@15.4.6(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@eslint/eslintrc':
         specifier: ^3
         version: 3.3.1
@@ -83,8 +83,8 @@ importers:
         version: 4.5.1(vue@3.5.18(typescript@5.7.3))
     devDependencies:
       '@browser-echo/nuxt':
-        specifier: workspace:*
-        version: link:../../packages/nuxt
+        specifier: https://pkg.pr.new/instructa/browser-echo/@browser-echo/nuxt@e0bbe63
+        version: https://pkg.pr.new/instructa/browser-echo/@browser-echo/nuxt@e0bbe63(@nuxt/kit@4.0.3(magicast@0.3.5))
 
   example/react-vite-app:
     dependencies:
@@ -96,8 +96,8 @@ importers:
         version: 19.1.0(react@19.1.0)
     devDependencies:
       '@browser-echo/vite':
-        specifier: workspace:*
-        version: link:../../packages/vite
+        specifier: https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@e0bbe63
+        version: https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@e0bbe63(vite@7.1.1(@types/node@24.2.1)(jiti@2.5.1)(lightningcss@1.30.1)(terser@5.43.1)(tsx@4.20.3)(yaml@2.8.1))
       '@eslint/js':
         specifier: ^9.17.0
         version: 9.33.0
@@ -154,8 +154,8 @@ importers:
         version: 3.25.76
     devDependencies:
       '@browser-echo/vite':
-        specifier: workspace:*
-        version: link:../../packages/vite
+        specifier: https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@e0bbe63
+        version: https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@e0bbe63(vite@6.3.5(@types/node@22.17.1)(jiti@2.5.1)(lightningcss@1.30.1)(terser@5.43.1)(tsx@4.20.3)(yaml@2.8.1))
       '@types/node':
         specifier: ^22.5.4
         version: 22.17.1
@@ -194,8 +194,8 @@ importers:
         version: 3.5.18(typescript@5.7.3)
     devDependencies:
       '@browser-echo/vite':
-        specifier: workspace:*
-        version: link:../../packages/vite
+        specifier: https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@e0bbe63
+        version: https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@e0bbe63(vite@7.1.1(@types/node@24.2.1)(jiti@2.5.1)(lightningcss@1.30.1)(terser@5.43.1)(tsx@4.20.3)(yaml@2.8.1))
       '@vitejs/plugin-vue':
         specifier: ^5.2.1
         version: 5.2.4(vite@7.1.1(@types/node@24.2.1)(jiti@2.5.1)(lightningcss@1.30.1)(terser@5.43.1)(tsx@4.20.3)(yaml@2.8.1))(vue@3.5.18(typescript@5.7.3))
@@ -478,6 +478,31 @@ packages:
   '@babel/types@7.28.2':
     resolution: {integrity: sha512-ruv7Ae4J5dUYULmeXw1gmb7rYRz57OWCPM57pHojnLq/3Z1CK2lNSLTCVjxVk1F/TZHwOZZrOWi0ur95BbLxNQ==}
     engines: {node: '>=6.9.0'}
+
+  '@browser-echo/core@https://pkg.pr.new/instructa/browser-echo/@browser-echo/core@e0bbe63ef6e35a75692fc66f02af57ee32c292bd':
+    resolution: {tarball: https://pkg.pr.new/instructa/browser-echo/@browser-echo/core@e0bbe63ef6e35a75692fc66f02af57ee32c292bd}
+    version: 0.0.0
+
+  '@browser-echo/next@https://pkg.pr.new/instructa/browser-echo/@browser-echo/next@e0bbe63':
+    resolution: {tarball: https://pkg.pr.new/instructa/browser-echo/@browser-echo/next@e0bbe63}
+    version: 0.0.0
+    hasBin: true
+    peerDependencies:
+      next: '>=13.4.0'
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@browser-echo/nuxt@https://pkg.pr.new/instructa/browser-echo/@browser-echo/nuxt@e0bbe63':
+    resolution: {tarball: https://pkg.pr.new/instructa/browser-echo/@browser-echo/nuxt@e0bbe63}
+    version: 0.0.0
+    peerDependencies:
+      '@nuxt/kit': '>=3.11.0'
+
+  '@browser-echo/vite@https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@e0bbe63':
+    resolution: {tarball: https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@e0bbe63}
+    version: 0.0.0
+    peerDependencies:
+      vite: '>=4.0.0'
 
   '@cloudflare/kv-asset-handler@0.4.0':
     resolution: {integrity: sha512-+tv3z+SPp+gqTIcImN9o0hqE9xyfQjI1XD9pL6NuKjua9B1y7mNYv0S9cP+QEbA4ppVgGZEmKOvHX5G5Ei1CVA==}
@@ -7058,6 +7083,32 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.27.1
+
+  '@browser-echo/core@https://pkg.pr.new/instructa/browser-echo/@browser-echo/core@e0bbe63ef6e35a75692fc66f02af57ee32c292bd': {}
+
+  '@browser-echo/next@https://pkg.pr.new/instructa/browser-echo/@browser-echo/next@e0bbe63(next@15.4.6(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      '@browser-echo/core': https://pkg.pr.new/instructa/browser-echo/@browser-echo/core@e0bbe63ef6e35a75692fc66f02af57ee32c292bd
+      next: 15.4.6(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
+  '@browser-echo/nuxt@https://pkg.pr.new/instructa/browser-echo/@browser-echo/nuxt@e0bbe63(@nuxt/kit@4.0.3(magicast@0.3.5))':
+    dependencies:
+      '@browser-echo/core': https://pkg.pr.new/instructa/browser-echo/@browser-echo/core@e0bbe63ef6e35a75692fc66f02af57ee32c292bd
+      '@nuxt/kit': 4.0.3(magicast@0.3.5)
+
+  '@browser-echo/vite@https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@e0bbe63(vite@6.3.5(@types/node@22.17.1)(jiti@2.5.1)(lightningcss@1.30.1)(terser@5.43.1)(tsx@4.20.3)(yaml@2.8.1))':
+    dependencies:
+      '@browser-echo/core': https://pkg.pr.new/instructa/browser-echo/@browser-echo/core@e0bbe63ef6e35a75692fc66f02af57ee32c292bd
+      ansis: 3.17.0
+      vite: 6.3.5(@types/node@22.17.1)(jiti@2.5.1)(lightningcss@1.30.1)(terser@5.43.1)(tsx@4.20.3)(yaml@2.8.1)
+
+  '@browser-echo/vite@https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@e0bbe63(vite@7.1.1(@types/node@24.2.1)(jiti@2.5.1)(lightningcss@1.30.1)(terser@5.43.1)(tsx@4.20.3)(yaml@2.8.1))':
+    dependencies:
+      '@browser-echo/core': https://pkg.pr.new/instructa/browser-echo/@browser-echo/core@e0bbe63ef6e35a75692fc66f02af57ee32c292bd
+      ansis: 3.17.0
+      vite: 7.1.1(@types/node@24.2.1)(jiti@2.5.1)(lightningcss@1.30.1)(terser@5.43.1)(tsx@4.20.3)(yaml@2.8.1)
 
   '@cloudflare/kv-asset-handler@0.4.0':
     dependencies:

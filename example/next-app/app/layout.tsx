@@ -29,7 +29,7 @@ export default function RootLayout({
         {process.env.NODE_ENV === "development" && (
           <BrowserEchoScript 
             route="/api/client-logs" 
-            stackMode="full"
+            stackMode="condensed"
             showSource={true}
             tag="[Next.js Browser]"
             include={['warn', 'error', 'info']}
