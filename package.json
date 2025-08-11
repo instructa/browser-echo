@@ -1,0 +1,48 @@
+{
+  "name": "vite-browser-logs",
+  "version": "0.1.0",
+  "description": "Stream browser console logs to the Vite dev server terminal with colors, stack modes, batching, and optional file logging.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./stream-logs-to-terminal.ts",
+  "module": "./stream-logs-to-terminal.ts",
+  "types": "./stream-logs-to-terminal.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "oxlint",
+    "lint:ci": "oxlint --deny-warnings",
+    "lint:fix": "oxlint --fix"
+  },
+  "exports": {
+    ".": {
+      "import": "./stream-logs-to-terminal.ts",
+      "default": "./stream-logs-to-terminal.ts"
+    }
+  },
+  "keywords": [
+    "vite",
+    "plugin",
+    "logs",
+    "console",
+    "terminal",
+    "dev",
+    "ansis"
+  ],
+  "peerDependencies": {
+    "vite": "^5 || ^6 || ^7"
+  },
+  "dependencies": {
+    "ansis": "^4.1.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^24.2.1",
+    "oxlint": "^1.11.1",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.1",
+    "vitest": "^3.2.4"
+  }
+}

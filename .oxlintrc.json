@@ -1,0 +1,10 @@
+{
+  "$schema": "https://oxc.rs/schema/oxlintrc.json",
+  "ignorePatterns": [
+    "node_modules/**",
+    "dist/**",
+    "coverage/**"
+  ]
+}
+
+
