@@ -1,0 +1,25 @@
+{
+  "name": "@browser-echo/vite",
+  "version": "0.0.0",
+  "type": "module",
+  "sideEffects": false,
+  "files": ["dist"],
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+  },
+  "peerDependencies": { "vite": ">=4.0.0" },
+  "dependencies": {
+    "ansis": "^3.2.0",
+    "@browser-echo/core": "workspace:*"
+  },
+  "scripts": {
+    "build": "unbuild",
+    "dev": "unbuild -w",
+    "clean": "rimraf dist || true",
+    "test": "vitest run packages/vite"
+  },
+  "devDependencies": {
+    "unbuild": "^2.0.0",
+    "typescript": "^5.5.4"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "@browser-echo/nuxt",
+  "version": "0.0.0",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/module.d.ts",
+      "default": "./dist/module.js"
+    }
+  },
+  "peerDependencies": {
+    "@nuxt/kit": ">=3.11.0"
+  },
+  "dependencies": {
+    "@browser-echo/core": "workspace:*"
+  },
+  "scripts": {
+    "build": "unbuild",
+    "dev": "unbuild -w",
+    "clean": "rimraf dist || true",
+    "test": "vitest run packages/nuxt"
+  },
+  "devDependencies": {
+    "h3": "^1.15.4",
+    "typescript": "^5.5.4",
+    "unbuild": "^2.0.0"
+  }
+}

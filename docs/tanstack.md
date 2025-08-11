@@ -1,31 +1,61 @@
-### TanStack Start (Vite) integration
+# TanStack Start (Vite) Guide
 
-TanStack Start runs on Vite in dev, so you can use this plugin directly.
+This uses the Vite provider for the easiest “just works” setup.
 
-1) Register the plugin in `vite.config.ts`
+## Install
+
+```bash
+pnpm add -D @browser-echo/vite
+```
+
+## Add the plugin
 
 ```ts
+// vite.config.ts
 import { defineConfig } from 'vite';
-import browserLogsToTerminal from 'browser-echo';
+import react from '@vitejs/plugin-react';
+import browserEcho from '@browser-echo/vite';
 
 export default defineConfig({
   plugins: [
-    browserLogsToTerminal({
+    react(),
+    browserEcho({
       // optional tuning
       colors: true,
-      stackMode: 'condensed',
-      fileLog: { enabled: true, dir: 'logs/frontend' },
+      stackMode: 'condensed', // 'none' | 'condensed' | 'full'
+      fileLog: { enabled: false }, // Vite-only file logging
     }),
   ],
 });
 ```
 
-2) Import the virtual module on the client (e.g. `src/router.tsx`)
+### If your app doesn’t serve `index.html`
+
+Some TanStack Start setups render without an `index.html`. In that case, set `injectHtml: false` and import the virtual module once on the client:
 
 ```ts
+// e.g. src/entry-client.tsx or your router bootstrap
 if (import.meta.env.DEV && typeof window !== 'undefined') {
-  void import('virtual:browser-logs-to-terminal');
+  void import('virtual:browser-echo');
 }
 ```
 
-Start your dev server; browser console output will stream to your Vite terminal.
+## Run
+
+```bash
+pnpm dev
+```
+
+Open your app and watch your terminal show browser logs:
+
+```
+[browser] [a1b2c3d4] ERROR: Something exploded (src/routes/index.tsx:42:13)
+    Error: Something exploded
+        at doThing (src/routes/index.tsx:42:13)
+```
+
+## Options that matter for TanStack
+
+* `stackMode: 'condensed'` is a nice balance.
+* `fileLog.enabled: true` to write dev logs under `logs/frontend/` (Vite plugin only).
+* Keep `preserveConsole: true` if you still want DevTools logs visible.

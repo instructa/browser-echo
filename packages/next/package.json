@@ -1,0 +1,27 @@
+{
+  "name": "@browser-echo/next",
+  "version": "0.0.0",
+  "type": "module",
+  "sideEffects": false,
+  "files": ["dist"],
+  "exports": {
+    "./route": { "types": "./dist/route.d.ts", "default": "./dist/route.js" },
+    "./BrowserEchoScript": { "types": "./dist/BrowserEchoScript.d.ts", "default": "./dist/BrowserEchoScript.js" }
+  },
+  "peerDependencies": {
+    "next": ">=13.4.0",
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "dependencies": { "@browser-echo/core": "workspace:*" },
+  "scripts": {
+    "build": "unbuild",
+    "dev": "unbuild -w",
+    "clean": "rimraf dist || true",
+    "test": "vitest run packages/next"
+  },
+  "devDependencies": {
+    "unbuild": "^2.0.0",
+    "typescript": "^5.5.4"
+  }
+}

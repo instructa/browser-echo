@@ -1,192 +1,101 @@
-### Browser Echo → Terminal (dev-only)
+# Browser Echo → Terminal (dev‑only)
 
-Stream browser `console.*` logs to your Vite dev server terminal with colors, stack traces, batching, and optional file logging.
+Stream browser `console.*` logs to your dev terminal with colors, stack traces, batching, and (Vite-only) optional file logging.
 
-This is a lightweight Vite plugin designed for SSR/SPA setups (TanStack Start, Nitro, Cloudflare, etc.). It only runs during `vite dev` and has no production impact.
+`browser-echo` makes it easy for you (and your AI coding assistant) to read client-side logs directly in the server terminal during development.
 
-#### Frameworks
+No production impact. Providers enable this across frameworks by injecting a tiny client patch and exposing a dev-only HTTP endpoint.
 
-| Framework | Dev engine | How to use |
-|---|---|---|
-| Next.js | Turbopack | [docs/next.md](docs/next.md) |
-| Nuxt | Nitro (Vite for client dev) | [docs/nuxt.md](docs/nuxt.md) |
-| TanStack Start | Vite | [docs/tanstack.md](docs/tanstack.md) |
+## Packages
 
-## Installation
+| Package | What it is | Who should install |
+| --- | --- | --- |
+| `@browser-echo/core` | Shared client patch (`initBrowserEcho`) | dependency of all providers |
+| `@browser-echo/vite` | Vite plugin with dev middleware + virtual module | TanStack Start, Vite + React, Vite + Vue |
+| `@browser-echo/nuxt` | Nuxt 3/4 module (Nitro server route + client plugin) | Nuxt users |
+| `@browser-echo/next` | Next.js App Router helper (route + early script) | Next.js (Turbopack) users |
+| `@browser-echo/vue` (optional) | Vue plugin helper (if you’re not using Vite plugin) | Vue (non‑Vite) |
+| `@browser-echo/react` (optional) | React provider component (if you’re not using Vite plugin) | React (non‑Vite) |
 
-Using pnpm:
+> Framework users only install their provider + `@browser-echo/core`. No cross‑framework bloat.
 
-```bash
-pnpm add -D browser-echo@latest
-```
+## Quick start matrix
 
-Using npm:
+| Framework | Dev engine | Install | Steps |
+| --- | --- | --- | --- |
+| TanStack / Vite (React/Vue) | Vite | `pnpm add -D @browser-echo/vite` | Add plugin in `vite.config.ts`. If no `index.html`, import the virtual module manually. |
+| Nuxt 3/4 | Nitro (Vite for client dev) | `pnpm add -D @browser-echo/nuxt` | Add module in `nuxt.config.ts`. Route + client init are auto‑wired. |
+| Next.js (App Router) | Turbopack | `pnpm add -D @browser-echo/next` | Add `<BrowserEchoScript />` in `<head>` and export `POST` handler at `/__client-logs`. |
+| Vue (non‑Vite) | varies | `pnpm add -D @browser-echo/vue` | Use the Vue plugin helper. Provide your own dev route if not using Vite provider. |
+| React (non‑Vite) | varies | `pnpm add -D @browser-echo/react` | Use the React provider. Provide your own dev route if not using Vite provider. |
 
-```bash
-npm i -D browser-echo@latest
-```
+- Detailed guides:
+  - [docs/tanstack.md](docs/tanstack.md)
+  - [docs/react.md](docs/react.md)
+  - [docs/vue.md](docs/vue.md)
+  - [docs/nuxt.md](docs/nuxt.md)
+  - [docs/next.md](docs/next.md)
 
-## Setup
+## What you get
 
-### 1) Register the plugin in `vite.config.ts`
+- Drop‑in client patch that wraps `console.log/info/warn/error/debug`
+- Batched posts (uses `sendBeacon` when possible)
+- Source hints `(file:line:col)` + stack traces
+- Colorized terminal output
+- Optional file logging (Vite provider only)
+- Works great with AI assistants reading your terminal
 
-```ts
-import { defineConfig } from 'vite'
-import browserLogsToTerminal from 'browser-echo'
+## Options (shared shape)
 
-export default defineConfig({
-  plugins: [
-    // ...other plugins
-    browserLogsToTerminal({
-      // Optional tuning
-      colors: true,
-      stackMode: 'condensed', // 'none' | 'condensed' | 'full'
-      fileLog: { enabled: true, dir: 'logs/frontend' },
-    }),
-  ],
-})
-```
-
-### 2) SSR/TanStack Start: import the virtual module on the client
-
-Add a guarded dev-only dynamic import in your client entry (e.g., `src/router.tsx`):
+Most providers accept these options (names may appear as plugin options or component props):
 
 ```ts
-if (import.meta.env.DEV && typeof window !== 'undefined') {
-  void import('virtual:browser-logs-to-terminal')
+type BrowserLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
+
+interface BrowserEchoOptions {
+  enabled?: boolean;                 // default: true (dev only)
+  route?: `/${string}`;              // default: '/__client-logs'
+  include?: BrowserLogLevel[];       // default: ['log','info','warn','error','debug']
+  preserveConsole?: boolean;         // default: true (also keep logging in the browser)
+  tag?: string;                      // default: '[browser]'
+  // stacks
+  stackMode?: 'none' | 'condensed' | 'full'; // default: 'full' (provider-specific; Vite supports all)
+  showSource?: boolean;              // default: true (when available)
+  // batching
+  batch?: { size?: number; interval?: number }; // default: 20 / 300ms
+  // server-side
+  truncate?: number;                 // default: 10_000 chars (Vite)
+  fileLog?: { enabled?: boolean; dir?: string }; // Vite-only
 }
 ```
 
-That’s it. Start your dev server and open the app:
+> Note: File logging and `truncate` are currently implemented in the Vite plugin’s dev server middleware. Nuxt/Next providers print to stdout by default (you can extend them if you need file output there).
 
-```bash
-pnpm dev
-```
+## Production
 
-Browser logs will appear in your terminal, e.g.:
-
-```
-[browser] [a1b2c3d4] ERROR: Something exploded (src/routes/index.tsx:42:13)
-    Error: Something exploded
-        at doThing (src/routes/index.tsx:42:13)
-```
-
-## Options
-
-All options are optional. Defaults are shown.
-
-```ts
-type BrowserLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug'
-
-interface BrowserLogsToTerminalOptions {
-  enabled?: boolean                 // default: true (dev-only, via apply: 'serve')
-  route?: `/${string}`              // default: '/__client-logs'
-  include?: BrowserLogLevel[]       // default: ['log','info','warn','error','debug']
-  preserveConsole?: boolean         // default: true (also keep logging in browser)
-  tag?: string                      // default: '[browser]'
-
-  // Stack configuration
-  stackMode?: 'none' | 'condensed' | 'full' // default: 'full'
-  showSource?: boolean              // default: true (append file:line:col when available)
-
-  colors?: boolean                  // default: true (uses ansis)
-  injectHtml?: boolean              // default: true (auto-injects a module <script> in index.html)
-
-  // Client-side batching
-  batch?: {
-    size?: number                   // default: 20 (flush when queue reaches size)
-    interval?: number               // default: 300 ms (flush after interval)
-  }
-
-  truncate?: number                 // default: 10_000 (server-side truncate for very long lines)
-
-  // Optional file logging (server-side)
-  fileLog?: {
-    enabled?: boolean               // default: false
-    dir?: string                    // default: 'logs/frontend'
-  }
-}
-```
-
-### Notes
-- Stack modes:
-  - 'none': no stack output
-  - 'condensed': prints only the first stack line
-  - 'full': prints the entire stack indented under the log line
-- Per-tab session IDs help distinguish multiple browser tabs (`[abcd1234]`).
-- Source location extraction prints `(file:line:col)` when available.
-- Batching reduces network chatter and uses `sendBeacon` when possible for reliable unloads.
-
-## Examples
-
-### Only warnings and errors, condensed stacks, with file logging
-
-```ts
-browserLogsToTerminal({
-  injectHtml: false,
-  include: ['warn', 'error'],
-  stackMode: 'condensed',
-  colors: true,
-  fileLog: { enabled: true, dir: 'logs/frontend' },
-})
-```
-
-### Quiet terminal (no browser console duplication)
-
-```ts
-browserLogsToTerminal({
-  preserveConsole: false,
-})
-```
-
-### Custom endpoint and tag
-
-```ts
-browserLogsToTerminal({
-  route: '/__client-logs',
-  tag: '[web]'
-})
-```
-
-## Production builds and stripping logs
-
-This plugin is dev-only (applies to `vite dev` via `apply: 'serve'`). It does not inject any client code into production bundles.
-
-If you want to remove logs from production, you can add a build-only strip step with Rollup’s strip plugin:
-
-```ts
-// vite.config.ts
-import strip from '@rollup/plugin-strip'
-
-export default defineConfig({
-  plugins: [
-    // ... your dev plugins
-    {
-      ...strip({
-        include: [/\.([cm]?ts|[jt]sx?)$/],
-        // You can be specific: functions: ['console.log', 'console.debug']
-        functions: ['console.*'],
-      }),
-      apply: 'build',
-    },
-  ],
-})
-```
+* Providers apply only in development and inject nothing into your production client bundles.
+* If you also want to strip `console.*` in prod builds, use your bundler’s strip tools (e.g. Rollup plugin) separately.
 
 ## Troubleshooting
 
-- I see GET errors like `virtual:browser-logs-to-terminal net::ERR_FAILED`:
-  - If you don’t serve `index.html`, set `injectHtml: false` and import the virtual module on the client as shown above.
-- Duplicate logs in the browser:
-  - Set `preserveConsole: false` to stop printing in the browser console.
-- No colors:
-  - Some terminals or CI environments may not render colors; you can set `colors: false`.
-- No file logs written:
-  - Ensure `fileLog.enabled: true` and the process has write permission to the target `dir` (default `logs/frontend`).
+* No logs appear
 
-## Security
+  * Vite: ensure plugin is added and either `index.html` exists or you import the virtual module manually.
+  * Nuxt: confirm the module is in `modules[]` and you’re in dev mode.
+  * Next: make sure `app/__client-logs/route.ts` is exported and `<BrowserEchoScript />` is rendered in `<head>`.
 
-- The HTTP endpoint is served by the Vite dev server and exists only in development. Nothing is exposed in production.
+* Endpoint 404
+
+  * Using a custom `base` or proxy? Keep the route same‑origin and not behind auth.
+  * Nuxt sometimes proxies dev servers; our module registers a Nitro route directly.
+
+* Too noisy
+
+  * Limit to `['warn','error']` and use `stackMode: 'condensed'`.
+
+* Duplicate logs in browser
+
+  * Set `preserveConsole: false`.
 
 ## License
 
