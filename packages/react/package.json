@@ -5,7 +5,7 @@
   "sideEffects": false,
   "files": ["dist"],
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.mjs" }
   },
   "peerDependencies": { "react": ">=18.0.0", "react-dom": ">=18.0.0" },
   "dependencies": { "@browser-echo/core": "workspace:*" },

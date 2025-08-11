@@ -1,6 +1,8 @@
-import type { Plugin, ViteDevServer } from 'vite';
+// Avoid exporting Vite types to prevent cross-version type mismatches in consumers
 import ansis from 'ansis';
 import type { BrowserLogLevel } from '@browser-echo/core';
+import { mkdirSync, appendFileSync } from 'node:fs';
+import { dirname, join as joinPath } from 'node:path';
 
 export interface BrowserLogsToTerminalOptions {
   enabled?: boolean;
@@ -37,7 +39,7 @@ const DEFAULTS: ResolvedOptions = {
   fileLog: { enabled: false, dir: 'logs/frontend' }
 };
 
-export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): Plugin {
+export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): any {
   const options: ResolvedOptions = {
     ...DEFAULTS,
     ...opts,
@@ -71,9 +73,7 @@ export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): Pl
   };
 }
 
-function attachMiddleware(server: ViteDevServer, options: ResolvedOptions) {
-  const { mkdirSync, appendFileSync } = require('node:fs');
-  const { dirname, join: joinPath } = require('node:path');
+function attachMiddleware(server: any, options: ResolvedOptions) {
   const sessionStamp = new Date().toISOString().replace(/[:.]/g, '-');
   const logFilePath = joinPath(options.fileLog.dir, `dev-${sessionStamp}.log`);
   if (options.fileLog.enabled) { try { mkdirSync(dirname(logFilePath), { recursive: true }); } catch {} }
@@ -130,7 +130,7 @@ function collectBody(req: import('http').IncomingMessage): Promise<Buffer> {
   });
 }
 
-function print(logger: ViteDevServer['config']['logger'], level: BrowserLogLevel, msg: string) {
+function print(logger: any, level: BrowserLogLevel, msg: string) {
   switch (level) {
     case 'error': logger.error(msg); break;
     case 'warn':  logger.warn(msg); break;

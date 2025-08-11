@@ -4,6 +4,7 @@ import { DefaultCatchBoundary } from './components/DefaultCatchBoundary'
 import { NotFound } from './components/NotFound'
 
 if (import.meta.env.DEV && typeof window !== 'undefined') {
+  // This is provided by the plugin only in dev; types are declared in vite-env.d.ts
   void import('virtual:browser-echo')
 }
 

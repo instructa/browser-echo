@@ -9,7 +9,7 @@
   "exports": {
     ".": {
       "types": "./dist/module.d.ts",
-      "default": "./dist/module.js"
+      "default": "./dist/module.mjs"
     }
   },
   "peerDependencies": {

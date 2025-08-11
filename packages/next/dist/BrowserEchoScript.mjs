@@ -1,25 +1,13 @@
-'use client';
-
+import { jsx } from 'react/jsx-runtime';
 import Script from 'next/script';
-import type { BrowserLogLevel } from '@browser-echo/core';
-import type { JSX } from 'react';
 
-export interface BrowserEchoScriptProps {
-  route?: `/${string}`;
-  include?: BrowserLogLevel[];
-  preserveConsole?: boolean;
-  tag?: string;
-  batch?: { size?: number; interval?: number };
-}
-
-export default function BrowserEchoScript(props: BrowserEchoScriptProps): JSX.Element {
-  const route = props.route ?? '/__client-logs';
-  const include = JSON.stringify(props.include ?? ['log','info','warn','error','debug']);
+function BrowserEchoScript(props) {
+  const route = props.route ?? "/__client-logs";
+  const include = JSON.stringify(props.include ?? ["log", "info", "warn", "error", "debug"]);
   const preserve = props.preserveConsole ?? true;
-  const tag = props.tag ?? '[browser]';
+  const tag = props.tag ?? "[browser]";
   const batchSize = props.batch?.size ?? 20;
   const batchInterval = props.batch?.interval ?? 300;
-
   const code = `
 (function(){
   if (typeof window==='undefined') return;
@@ -57,6 +45,7 @@ export default function BrowserEchoScript(props: BrowserEchoScriptProps): JSX.El
   try{ ORIGINAL['info'] && ORIGINAL['info'](TAG+' forwarding console logs to '+ROUTE+' (session '+SESSION+')') }catch(_){}
 })();
   `.trim();
-
-  return <Script id="browser-echo" strategy="beforeInteractive">{code}</Script>;
+  return /* @__PURE__ */ jsx(Script, { id: "browser-echo", strategy: "beforeInteractive", children: code });
 }
+
+export { BrowserEchoScript as default };

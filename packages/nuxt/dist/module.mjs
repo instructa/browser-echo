@@ -1,6 +1,6 @@
 import { defineNuxtModule, createResolver, addServerHandler, addTemplate, addPlugin } from '@nuxt/kit';
 
-const module = defineNuxtModule({
+defineNuxtModule({
   meta: { name: "@browser-echo/nuxt", configKey: "browserEcho" },
   defaults: {
     enabled: true,
@@ -33,10 +33,10 @@ export default defineNuxtPlugin(() => {
       })});
   }
 });
+
+export default module;
 `
     });
     addPlugin({ src: tpl.dst, mode: "client" });
   }
 });
-
-export { module as default };

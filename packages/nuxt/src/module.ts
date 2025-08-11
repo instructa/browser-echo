@@ -1,4 +1,5 @@
 import { defineNuxtModule, addPlugin, createResolver, addServerHandler, addTemplate } from '@nuxt/kit';
+import type { NuxtModule } from '@nuxt/schema';
 
 export interface NuxtBrowserEchoOptions {
   enabled?: boolean;
@@ -9,7 +10,7 @@ export interface NuxtBrowserEchoOptions {
   batch?: { size?: number; interval?: number };
 }
 
-export default defineNuxtModule<NuxtBrowserEchoOptions>({
+const module: NuxtModule<NuxtBrowserEchoOptions> = defineNuxtModule<NuxtBrowserEchoOptions>({
   meta: { name: '@browser-echo/nuxt', configKey: 'browserEcho' },
   defaults: {
     enabled: true,
@@ -43,6 +44,8 @@ export default defineNuxtPlugin(() => {
     })});
   }
 });
+
+export default module;
 `
     });
     addPlugin({ src: tpl.dst, mode: 'client' });

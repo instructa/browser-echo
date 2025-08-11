@@ -14,6 +14,6 @@ export default defineConfig({
     }),
     tanstackStart({ customViteReactPlugin: true }),
     viteReact(),
-    browserEcho({ injectHtml: false }),
+    browserEcho({ injectHtml: false, stackMode: 'condensed' }),
   ],
 })

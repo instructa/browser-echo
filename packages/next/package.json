@@ -5,8 +5,8 @@
   "sideEffects": false,
   "files": ["dist"],
   "exports": {
-    "./route": { "types": "./dist/route.d.ts", "default": "./dist/route.js" },
-    "./BrowserEchoScript": { "types": "./dist/BrowserEchoScript.d.ts", "default": "./dist/BrowserEchoScript.js" }
+    "./route": { "types": "./dist/route.d.ts", "default": "./dist/route.mjs" },
+    "./BrowserEchoScript": { "types": "./dist/BrowserEchoScript.d.ts", "default": "./dist/BrowserEchoScript.mjs" }
   },
   "peerDependencies": {
     "next": ">=13.4.0",
