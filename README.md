@@ -1,4 +1,4 @@
-### Vite Browser Logs → Terminal (dev-only)
+### Browser Echo → Terminal (dev-only)
 
 Stream browser `console.*` logs to your Vite dev server terminal with colors, stack traces, batching, and optional file logging.
 
@@ -17,13 +17,13 @@ This is a lightweight Vite plugin designed for SSR/SPA setups (TanStack Start, N
 Using pnpm:
 
 ```bash
-pnpm add -D vite-browser-logs@latest
+pnpm add -D browser-echo@latest
 ```
 
 Using npm:
 
 ```bash
-npm i -D vite-browser-logs@latest
+npm i -D browser-echo@latest
 ```
 
 ## Setup
@@ -32,7 +32,7 @@ npm i -D vite-browser-logs@latest
 
 ```ts
 import { defineConfig } from 'vite'
-import browserLogsToTerminal from 'vite-browser-logs'
+import browserLogsToTerminal from 'browser-echo'
 
 export default defineConfig({
   plugins: [

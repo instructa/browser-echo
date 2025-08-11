@@ -1,6 +1,6 @@
 {
-  "name": "vite-browser-logs",
-  "version": "0.1.0",
+  "name": "browser-echo",
+  "version": "0.0.1",
   "description": "Stream browser console logs to the Vite dev server terminal with colors, stack modes, batching, and optional file logging.",
   "license": "MIT",
   "type": "module",

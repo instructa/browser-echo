@@ -78,7 +78,7 @@ function makeRes(): { res: any; done: Promise<void>; statusCode?: number } {
   return { res, done };
 }
 
-describe('vite-browser-logs plugin - basics', () => {
+describe('browser-echo plugin - basics', () => {
   it('resolves and loads virtual module', async () => {
     const plugin = browserLogsToTerminal() as Plugin;
 
@@ -98,7 +98,7 @@ describe('vite-browser-logs plugin - basics', () => {
   });
 });
 
-describe('vite-browser-logs plugin - middleware logging', () => {
+describe('browser-echo plugin - middleware logging', () => {
   let tmpDir: string;
   beforeEach(() => {
     tmpDir = mkdtempSync(joinPath(tmpdir(), 'vbl-'));

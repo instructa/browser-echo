@@ -29,7 +29,7 @@ function browserLogsToTerminal(opts = {}) {
   const VIRTUAL_ID = "\0virtual:browser-logs-to-terminal";
   const PUBLIC_ID = "virtual:browser-logs-to-terminal";
   return {
-    name: "vite-browser-logs-to-terminal",
+    name: "browser-echo",
     apply: "serve",
     // dev only
     enforce: "pre",

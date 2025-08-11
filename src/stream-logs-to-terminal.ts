@@ -1,4 +1,4 @@
-// plugins/vite-browser-logs-to-terminal.ts
+// plugins/browser-echo.ts
 import type { Plugin, ViteDevServer } from 'vite';
 import ansis from 'ansis';
 import { mkdirSync, appendFileSync } from 'node:fs';
@@ -121,7 +121,7 @@ export default function browserLogsToTerminal(opts: BrowserLogsToTerminalOptions
   const PUBLIC_ID = 'virtual:browser-logs-to-terminal';
 
   return {
-    name: 'vite-browser-logs-to-terminal',
+    name: 'browser-echo',
     apply: 'serve', // dev only
     enforce: 'pre',
 

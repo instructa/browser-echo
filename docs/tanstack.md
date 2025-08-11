@@ -6,7 +6,7 @@ TanStack Start runs on Vite in dev, so you can use this plugin directly.
 
 ```ts
 import { defineConfig } from 'vite';
-import browserLogsToTerminal from 'vite-browser-logs';
+import browserLogsToTerminal from 'browser-echo';
 
 export default defineConfig({
   plugins: [

@@ -12,7 +12,7 @@ Nuxt uses Vite in development. You can either:
 
 ```ts
 // nuxt.config.ts
-import browserLogsToTerminal from 'vite-browser-logs'
+import browserLogsToTerminal from 'browser-echo'
 
 export default defineNuxtConfig({
   vite: {
