@@ -1,0 +1,11 @@
+{
+  "packages": [
+    "packages/core",
+    "packages/vite", 
+    "packages/next",
+    "packages/nuxt",
+    "packages/react",
+    "packages/vue"
+  ],
+  "packageManager": "pnpm"
+}

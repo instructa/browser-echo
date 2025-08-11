@@ -30,6 +30,13 @@ jobs:
       - name: Build package
         run: pnpm build
 
+      - name: Debug workspace info
+        run: |
+          echo "Workspace packages:"
+          pnpm list --depth=-1 --json
+          echo "Package directories:"
+          find packages -name "package.json" | head -10
+
       - name: Publish preview package
         run: pnpm dlx pkg-pr-new publish
 
