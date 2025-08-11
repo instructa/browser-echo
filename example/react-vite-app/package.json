@@ -14,7 +14,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@browser-echo/vite": "latest",
+    "@browser-echo/vite": "workspace:*",
     "@eslint/js": "^9.17.0",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.2",
