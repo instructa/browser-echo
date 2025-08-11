@@ -1,8 +1,14 @@
-# Browser Echo → Terminal (dev‑only)
+# Browser Echo
 
-Stream browser `console.*` logs to your dev terminal with colors, stack traces, batching, and (Vite-only) optional file logging.
+Stream browser `console.*` logs to your dev terminal and optional file logging.
 
 `browser-echo` makes it easy for you (and your AI coding assistant) to read client-side logs directly in the server terminal during development.
+
+## Features
+
+🤖 **AI Coding Assistant Support** - Perfect for Cursor AI, Claude Code, GitHub Copilot CLI, Gemini CLI, and other code editors that read terminal output
+
+🚀 **Framework Support** - React, Vue, Nuxt 3/4, Next.js, TanStack Start, Vite-based frameworks, and custom setups
 
 No production impact. Providers enable this across frameworks by injecting a tiny client patch and exposing a dev-only HTTP endpoint.
 
@@ -30,11 +36,11 @@ No production impact. Providers enable this across frameworks by injecting a tin
 | React (non‑Vite) | varies | `pnpm add -D @browser-echo/react` | Use the React provider. Provide your own dev route if not using Vite provider. |
 
 - Detailed guides:
-  - [docs/tanstack.md](docs/tanstack.md)
-  - [docs/react.md](docs/react.md)
-  - [docs/vue.md](docs/vue.md)
-  - [docs/nuxt.md](docs/nuxt.md)
-  - [docs/next.md](docs/next.md)
+  - [packages/vite/README.md](packages/vite/README.md) - Vite plugin (TanStack, React, Vue)
+  - [packages/react/README.md](packages/react/README.md) - React provider (non-Vite)
+  - [packages/vue/README.md](packages/vue/README.md) - Vue plugin (non-Vite)
+  - [packages/nuxt/README.md](packages/nuxt/README.md) - Nuxt 3/4 module
+  - [packages/next/README.md](packages/next/README.md) - Next.js App Router
 
 ## What you get
 
@@ -102,3 +108,16 @@ interface BrowserEchoOptions {
 MIT
 
 
+## Links
+
+- X/Twitter: [@kregenrek](https://x.com/kregenrek)
+- Bluesky: [@kevinkern.dev](https://bsky.app/profile/kevinkern.dev)
+
+## Courses
+- Learn Cursor AI: [Ultimate Cursor Course](https://www.instructa.ai/en/cursor-ai)
+- Learn to build software with AI: [AI Builder Hub](https://www.instructa.ai)
+
+## See my other projects:
+
+* [codefetch](https://github.com/regenrek/codefetch) - Turn code into Markdown for LLMs with one simple terminal command
+* [instructa](https://github.com/orgs/instructa/repositories) - Instructa Projects
