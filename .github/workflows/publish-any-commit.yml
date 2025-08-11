@@ -1,0 +1,35 @@
+name: Publish Any Commit
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "!**"
+  pull_request:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      # Build step intentionally omitted as this repo has no build script
+
+      - name: Publish preview package
+        run: pnpm dlx pkg-pr-new publish
+
+
