@@ -4,10 +4,11 @@
   "description": "Stream browser console logs to the Vite dev server terminal with colors, stack modes, batching, and optional file logging.",
   "license": "MIT",
   "type": "module",
-  "main": "./stream-logs-to-terminal.ts",
-  "module": "./stream-logs-to-terminal.ts",
-  "types": "./stream-logs-to-terminal.ts",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
   "scripts": {
+    "build": "unbuild",
+    "prepack": "unbuild",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "oxlint",
@@ -16,8 +17,8 @@
   },
   "exports": {
     ".": {
-      "import": "./stream-logs-to-terminal.ts",
-      "default": "./stream-logs-to-terminal.ts"
+      "import": "./dist/index.mjs",
+      "types": "./dist/index.d.ts"
     }
   },
   "keywords": [
@@ -38,11 +39,16 @@
   "engines": {
     "node": ">=18"
   },
+  "files": [
+    "dist"
+  ],
   "devDependencies": {
     "@types/node": "^24.2.1",
     "oxlint": "^1.11.1",
     "typescript": "^5.9.2",
+    "unbuild": "^3.6.0",
     "vite": "^7.1.1",
     "vitest": "^3.2.4"
-  }
+  },
+  "packageManager": "pnpm@9.12.2"
 }

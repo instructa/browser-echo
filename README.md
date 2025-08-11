@@ -6,8 +6,16 @@ This is a lightweight Vite plugin designed for SSR/SPA setups (TanStack Start, N
 
 ## Installation
 
+Using pnpm:
+
 ```bash
-pnpm add vite-browser-logs@latest --save-dev
+pnpm add -D vite-browser-logs@latest
+```
+
+Using npm:
+
+```bash
+npm i -D vite-browser-logs@latest
 ```
 
 ## Setup
@@ -22,9 +30,6 @@ export default defineConfig({
   plugins: [
     // ...other plugins
     browserLogsToTerminal({
-      // If your app does not serve index.html (e.g., TanStack Start), set false
-      injectHtml: false,
-
       // Optional tuning
       colors: true,
       stackMode: 'condensed', // 'none' | 'condensed' | 'full'
@@ -34,12 +39,11 @@ export default defineConfig({
 })
 ```
 
-### 2) If your dev flow doesn’t use `index.html`, import the virtual module on the client
+### 2) SSR/TanStack Start: import the virtual module on the client
 
-For TanStack Start/SSR apps, add a guarded dev-only dynamic import in your client entry (e.g., `src/router.tsx` or similar):
+Add a guarded dev-only dynamic import in your client entry (e.g., `src/router.tsx`):
 
 ```ts
-// src/router.tsx
 if (import.meta.env.DEV && typeof window !== 'undefined') {
   void import('virtual:browser-logs-to-terminal')
 }
@@ -74,8 +78,7 @@ interface BrowserLogsToTerminalOptions {
   tag?: string                      // default: '[browser]'
 
   // Stack configuration
-  showStack?: boolean               // default: true (legacy flag)
-  stackMode?: 'none' | 'condensed' | 'full' // default: 'full'; overrides showStack
+  stackMode?: 'none' | 'condensed' | 'full' // default: 'full'
   showSource?: boolean              // default: true (append file:line:col when available)
 
   colors?: boolean                  // default: true (uses ansis)
