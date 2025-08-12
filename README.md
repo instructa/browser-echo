@@ -47,7 +47,7 @@ type BrowserLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
 
 interface BrowserEchoOptions {
   enabled?: boolean;                 // default: true (dev only)
-  route?: `/${string}`;              // default: '/__client-logs'
+  route?: `/${string}`;              // default: '/api/client-logs' (Next), '/__client-logs' (others)
   include?: BrowserLogLevel[];       // default: ['log','info','warn','error','debug']
   preserveConsole?: boolean;         // default: true (also keep logging in the browser)
   tag?: string;                      // default: '[browser]'
@@ -75,7 +75,7 @@ interface BrowserEchoOptions {
 
   * Vite: ensure plugin is added and either `index.html` exists or you import the virtual module manually.
   * Nuxt: confirm the module is in `modules[]` and you’re in dev mode.
-  * Next: make sure `app/__client-logs/route.ts` is exported and `<BrowserEchoScript />` is rendered in `<head>`.
+* Next: make sure `app/api/client-logs/route.ts` is exported and `<BrowserEchoScript />` is rendered in `<head>`.
 
 * Endpoint 404
 

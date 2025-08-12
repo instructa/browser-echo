@@ -42,7 +42,7 @@ type BrowserLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
 
 interface BrowserEchoScriptProps {
   enabled?: boolean;                 // default: true (dev only)
-  route?: `/${string}`;              // default: '/__client-logs'
+  route?: `/${string}`;              // default: '/api/client-logs'
   include?: BrowserLogLevel[];       // default: ['log','info','warn','error','debug']
   preserveConsole?: boolean;         // default: true (also keep logging in the browser)
   tag?: string;                      // default: '[browser]'
@@ -142,7 +142,7 @@ Forward logs to your terminal via a dedicated route:
 export { POST, runtime, dynamic } from '@browser-echo/next/route';
 ```
 
-- Route defaults to `/__client-logs` but works better as `/api/client-logs` in Next.js 15+
+- Default route is `/api/client-logs` (works best in Next.js 15+)
 - We set `runtime = 'nodejs'` and `dynamic = 'force-dynamic'` to ensure it runs on Node and isn't cached
 
 ## Usage Example
@@ -210,7 +210,7 @@ This package depends on [@browser-echo/core](https://github.com/instructa/browse
 
 ## Troubleshooting
 
-- **No logs appear**: Make sure `app/__client-logs/route.ts` is exported and `<BrowserEchoScript />` is rendered in `<head>`
+- **No logs appear**: Make sure `app/api/client-logs/route.ts` is exported and `<BrowserEchoScript />` is rendered in `<head>`
 - **Endpoint 404**: Verify your route file path matches the script's `route` prop
 - **Too noisy**: Limit to `include: ['warn','error']` and use `stackMode: 'condensed'`
 

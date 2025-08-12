@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const ROUTE_CONTENT = `export { POST, runtime, dynamic } from '@browser-echo/next/route';
 `;
@@ -56,7 +56,11 @@ export function setup(projectRoot = process.cwd()) {
 `);
 }
 
-// Run if called directly
-if (require.main === module) {
+// Run if called directly (ESM-safe)
+const isDirectRun = typeof process !== 'undefined'
+  && Array.isArray(process.argv)
+  && (process.argv[1]?.endsWith('setup.mjs') || process.argv[1]?.endsWith('setup.js'));
+
+if (isDirectRun) {
   setup();
 }

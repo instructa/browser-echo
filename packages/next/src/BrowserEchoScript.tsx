@@ -21,7 +21,8 @@ export default function BrowserEchoScript(props: BrowserEchoScriptProps): JSX.El
     return <></>;
   }
 
-  const route = props.route ?? '/__client-logs';
+  // Default to the conventional Next.js API route path
+  const route = props.route ?? '/api/client-logs';
   const include = JSON.stringify(props.include ?? ['log','info','warn','error','debug']);
   const preserve = props.preserveConsole ?? true;
   const tag = props.tag ?? '[browser]';
