@@ -1,6 +1,6 @@
 {
   "name": "@browser-echo/next",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "type": "module",
   "sideEffects": false,
   "repository": {
@@ -41,7 +41,7 @@
     "react-dom": ">=18.0.0"
   },
   "dependencies": {
-    "@browser-echo/core": "workspace:*"
+    "@browser-echo/core": "^0.0.5"
   },
   "scripts": {
     "build": "unbuild",
