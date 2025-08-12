@@ -1,6 +1,6 @@
 {
   "name": "@browser-echo/vue",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "type": "module",
   "sideEffects": false,
   "repository": {
@@ -25,7 +25,7 @@
     "vue": ">=3.3.0"
   },
   "dependencies": {
-    "@browser-echo/core": "workspace:*"
+    "@browser-echo/core": "^0.0.6"
   },
   "scripts": {
     "build": "unbuild",
