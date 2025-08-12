@@ -26,6 +26,8 @@ This package provides a React provider component for non-Vite environments. If y
 ## Installation
 
 ```bash
+npm install -D @browser-echo/react @browser-echo/core
+# or
 pnpm add -D @browser-echo/react @browser-echo/core
 ```
 

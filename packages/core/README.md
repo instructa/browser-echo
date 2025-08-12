@@ -16,6 +16,8 @@ This package provides the `initBrowserEcho` function that patches `console.*` me
 ## Installation
 
 ```bash
+npm install -D @browser-echo/core
+# or
 pnpm add -D @browser-echo/core
 ```
 

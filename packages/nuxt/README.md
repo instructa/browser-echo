@@ -16,6 +16,8 @@ This Nuxt module registers a Nitro server route and a client plugin (dev-only) w
 ## Installation
 
 ```bash
+npm install -D @browser-echo/nuxt
+# or
 pnpm add -D @browser-echo/nuxt
 ```
 

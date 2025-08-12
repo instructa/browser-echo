@@ -26,6 +26,8 @@ This package provides a Vue plugin helper for non-Vite environments. If you're u
 ## Installation
 
 ```bash
+npm install -D @browser-echo/vue @browser-echo/core
+# or
 pnpm add -D @browser-echo/vue @browser-echo/core
 ```
 
@@ -153,6 +155,8 @@ if (import.meta.env.DEV) {
 For Vue + Vite projects, use the Vite package instead:
 
 ```bash
+npm install -D @browser-echo/vite
+# or
 pnpm add -D @browser-echo/vite
 ```
 

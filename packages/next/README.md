@@ -16,6 +16,8 @@ Since Turbopack doesn't use Vite, this package provides a tiny route handler and
 ## Installation
 
 ```bash
+npm install -D @browser-echo/next
+# or
 pnpm add -D @browser-echo/next
 ```
 

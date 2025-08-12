@@ -23,6 +23,7 @@ No production impact. Providers enable this across frameworks by injecting a tin
 | Next.js (App Router) | [Installation Guide](packages/next/README.md) |
 | Vue | [Installation Guide](packages/vue/README.md) |
 | React | [Installation Guide](packages/react/README.md) |
+| Core | [Installation Guide](packages/core/README.md) |
 
 > Framework users only install their provider + `@browser-echo/core`. No cross‑framework bloat.
 

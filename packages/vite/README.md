@@ -16,6 +16,8 @@ This package provides a Vite plugin that includes dev middleware and a virtual m
 ## Installation
 
 ```bash
+npm install -D @browser-echo/vite
+# or
 pnpm add -D @browser-echo/vite
 ```
 
