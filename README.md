@@ -21,8 +21,8 @@ No production impact. Providers enable this across frameworks by injecting a tin
 | TanStack / Vite | [Installation Guide](packages/vite/README.md) |
 | Nuxt 3/4 | [Installation Guide](packages/nuxt/README.md) |
 | Next.js (App Router) | [Installation Guide](packages/next/README.md) |
-| Vue + Vite | **[Installation Guide](packages/vite/README.md#vue--vite) |
-| React + Vite | **[Installation Guide](packages/vite/README.md#react--vite) |
+| Vue + Vite | [Installation Guide](packages/vite/README.md#vue--vite) |
+| React + Vite | [Installation Guide](packages/vite/README.md#react--vite) |
 | Vue (non-Vite) | [Installation Guide](packages/vue/README.md) |
 | React (non-Vite) | [Installation Guide](packages/react/README.md) |
 | Core | [Installation Guide](packages/core/README.md) |
