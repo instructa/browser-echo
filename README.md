@@ -18,7 +18,7 @@ No production impact. Providers enable this across frameworks by injecting a tin
 
 | Framework | Quick Setup |
 | --- | --- |
-| TanStack / Vite | [Installation Guide](packages/vite/README.md) |
+| TanStack / Vite | [Installation Guide](packages/vite/README.md#tanstack-start) |
 | Nuxt 3/4 | [Installation Guide](packages/nuxt/README.md) |
 | Next.js (App Router) | [Installation Guide](packages/next/README.md) |
 | Vue + Vite | [Installation Guide](packages/vite/README.md#vue--vite) |
