@@ -88,6 +88,62 @@ browserEcho({
 
 ## Usage Examples
 
+### Vue + Vite
+
+```bash
+npm install -D @browser-echo/vite
+# or
+pnpm add -D @browser-echo/vite
+```
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite';
+import vue from '@vitejs/plugin-vue';
+import browserEcho from '@browser-echo/vite';
+
+export default defineConfig({
+  plugins: [
+    vue(),
+    browserEcho({
+      // Optional configuration
+      stackMode: 'condensed',
+      colors: true,
+    }),
+  ],
+});
+```
+
+That's it! Your Vue app will now stream console logs to your terminal during development.
+
+### React + Vite
+
+```bash
+npm install -D @browser-echo/vite
+# or
+pnpm add -D @browser-echo/vite
+```
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import browserEcho from '@browser-echo/vite';
+
+export default defineConfig({
+  plugins: [
+    react(),
+    browserEcho({
+      // Optional configuration
+      stackMode: 'condensed',
+      colors: true,
+    }),
+  ],
+});
+```
+
+Your React app will now stream console logs to your terminal during development.
+
 ### TanStack Start
 
 ```ts

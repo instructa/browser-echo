@@ -2,7 +2,9 @@
 
 React component for streaming browser console logs to your dev terminal (non-Vite setups).
 
-This package provides a React provider component for non-Vite environments. If you're using Vite, prefer [@browser-echo/vite](https://github.com/instructa/browser-echo/tree/main/packages/vite) which includes the dev middleware automatically.
+> **💡 Using React with Vite?** Check out our [React + Vite setup guide](../vite/README.md#react--vite) for the recommended approach using `@browser-echo/vite`.
+
+This package provides a React provider component for non-Vite environments. If you're using Vite, prefer [@browser-echo/vite](../vite/README.md#react--vite) which includes the dev middleware automatically.
 
 ## Features
 

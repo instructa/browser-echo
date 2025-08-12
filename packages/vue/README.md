@@ -2,7 +2,9 @@
 
 Vue plugin for streaming browser console logs to your dev terminal (non-Vite setups).
 
-This package provides a Vue plugin helper for non-Vite environments. If you're using Vite, prefer [@browser-echo/vite](https://github.com/instructa/browser-echo/tree/main/packages/vite) which includes the dev middleware automatically.
+> **💡 Using Vue with Vite?** Check out our [Vue + Vite setup guide](../vite/README.md#vue--vite) for the recommended approach using `@browser-echo/vite`.
+
+This package provides a Vue plugin helper for non-Vite environments. If you're using Vite, prefer [@browser-echo/vite](../vite/README.md#vue--vite) which includes the dev middleware automatically.
 
 ## Features
 

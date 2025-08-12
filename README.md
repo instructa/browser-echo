@@ -18,11 +18,13 @@ No production impact. Providers enable this across frameworks by injecting a tin
 
 | Framework | Quick Setup |
 | --- | --- |
-| TanStack / Vite (React/Vue) | [Installation Guide](packages/vite/README.md) |
+| TanStack / Vite | [Installation Guide](packages/vite/README.md) |
 | Nuxt 3/4 | [Installation Guide](packages/nuxt/README.md) |
 | Next.js (App Router) | [Installation Guide](packages/next/README.md) |
-| Vue | [Installation Guide](packages/vue/README.md) |
-| React | [Installation Guide](packages/react/README.md) |
+| Vue + Vite | **[Installation Guide](packages/vite/README.md#vue--vite) |
+| React + Vite | **[Installation Guide](packages/vite/README.md#react--vite) |
+| Vue (non-Vite) | [Installation Guide](packages/vue/README.md) |
+| React (non-Vite) | [Installation Guide](packages/react/README.md) |
 | Core | [Installation Guide](packages/core/README.md) |
 
 > Framework users only install their provider + `@browser-echo/core`. No cross‑framework bloat.
