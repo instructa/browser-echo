@@ -25,7 +25,7 @@
     "@nuxt/kit": ">=3.11.0"
   },
   "dependencies": {
-    "@browser-echo/core": "^0.0.6"
+    "@browser-echo/core": "workspace:*"
   },
   "scripts": {
     "build": "unbuild",
