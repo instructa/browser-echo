@@ -25,7 +25,8 @@
     "@nuxt/kit": ">=3.11.0"
   },
   "dependencies": {
-    "@browser-echo/core": "workspace:*"
+    "@browser-echo/core": "workspace:*",
+    "@browser-echo/mcp": "workspace:*"
   },
   "scripts": {
     "build": "unbuild",

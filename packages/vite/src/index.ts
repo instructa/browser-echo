@@ -1,6 +1,7 @@
 // Avoid exporting Vite types to prevent cross-version type mismatches in consumers
 import ansis from 'ansis';
 import type { BrowserLogLevel } from '@browser-echo/core';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { mkdirSync, appendFileSync } from 'node:fs';
 import { dirname, join as joinPath } from 'node:path';
 import { startMcpServer, handleMcpHttpRequest, publishLogEntry, isMcpEnabled as _mcpEnvEnabled } from '@browser-echo/mcp';
@@ -44,7 +45,7 @@ const DEFAULTS: ResolvedOptions = {
   mcpRoute: '/__mcp'
 };
 
-export default function browserEcho
+export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): import('vite').Plugin {
   const options: ResolvedOptions = {
     ...DEFAULTS,
     ...opts,
@@ -74,21 +75,22 @@ export default function browserEcho
     configureServer(server) {
       if (!options.enabled) return;
       try { startMcpServer(); } catch {}
-      server.middlewares.use(options.mcpRoute, (req, res, next) => {
-        // Allow only MCP methods; otherwise fall-through
-        const m = req.method || 'GET';
-        if (m !== 'GET' && m !== 'POST' && m !== 'DELETE') return next();
+      server.middlewares.use(options.mcpRoute, (req: IncomingMessage, res: ServerResponse, _next: () => void) => {
+        const m = (req.method || 'GET').toUpperCase();
         (async () => {
           try {
             let body: Buffer | undefined;
-            if (m === 'POST') {
+            if (m === 'POST' || m === 'PUT' || m === 'PATCH') {
               body = await collectBody(req);
             }
             await handleMcpHttpRequest(req as any, res as any, body);
           } catch (err: any) {
             server.config.logger.error(`${options.tag} MCP error: ${err?.message || err}`);
-            res.statusCode = 500;
-            res.end('mcp error');
+            if (!res.headersSent) {
+              res.statusCode = 500;
+              try { res.setHeader('content-type', 'application/json'); } catch {}
+            }
+            res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal server error' }, id: null }));
           }
         })();
       });
@@ -102,7 +104,7 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
   const logFilePath = joinPath(options.fileLog.dir, `dev-${sessionStamp}.log`);
   if (options.fileLog.enabled) { try { mkdirSync(dirname(logFilePath), { recursive: true }); } catch {} }
 
-  server.middlewares.use(options.route, (req, res, next) => {
+  server.middlewares.use(options.route, (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     if (req.method !== 'POST') return next();
     collectBody(req).then((raw) => {
       let payload: ClientPayload | null = null;

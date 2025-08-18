@@ -26,7 +26,8 @@
   },
   "dependencies": {
     "ansis": "^3.2.0",
-    "@browser-echo/core": "workspace:*"
+    "@browser-echo/core": "workspace:*",
+    "@browser-echo/mcp": "workspace:*"
   },
   "scripts": {
     "build": "unbuild",

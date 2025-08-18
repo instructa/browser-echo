@@ -23,13 +23,17 @@ it('injects virtual script in index.html', () => {
 });
 
 it('registers middleware and prints logs', async () => {
+  // Disable MCP during test so terminal printing occurs
+  process.env.BROWSER_ECHO_MCP = '0';
   const { server, logs, handlers } = makeServerMock();
   const p = browserEcho();
   (p as any).configureServer(server);
-  expect(handlers.length).toBe(1);
+  // MCP route + client-logs route
+  expect(handlers.length).toBeGreaterThanOrEqual(2);
 
-  const [route, fn] = handlers[0];
-  expect(route).toBe('/__client-logs');
+  const logsHandler = handlers.find(([route]) => route === '/__client-logs');
+  expect(logsHandler).toBeTruthy();
+  const [route, fn] = logsHandler!;
 
   // simulate POST
   const req: any = new (class {

@@ -12,6 +12,8 @@ vi.mock('h3', async () => {
 import handler from '../src/runtime/server/handler';
 
 it('prints forwarded logs and returns 204', async () => {
+  // Disable MCP during test so console printing occurs
+  process.env.BROWSER_ECHO_MCP = '0';
   const w = vi.spyOn(console, 'warn').mockImplementation(() => {});
   const e = {} as any;
   const res = await handler(e);
