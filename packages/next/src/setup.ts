@@ -4,6 +4,8 @@ import { join } from 'node:path';
 
 const ROUTE_CONTENT = `export { POST, runtime, dynamic } from '@browser-echo/next/route';
 `;
+const MCP_ROUTE_CONTENT = `export { GET, POST, DELETE, runtime, dynamic } from '@browser-echo/next/mcp-route';
+`;
 
 export function setup(projectRoot = process.cwd()) {
   // Check if we're in a Next.js project
@@ -33,11 +35,17 @@ export function setup(projectRoot = process.cwd()) {
     mkdirSync(clientLogsDir, { recursive: true });
   }
 
-  // Write the route file
+  // Write the client-logs route file
   writeFileSync(routePath, ROUTE_CONTENT);
   console.log('✅ Created route at app/api/client-logs/route.ts');
 
-  // Instructions
+  const mcpDir = join(apiDir, 'mcp');
+  const mcpRoutePath = join(mcpDir, 'route.ts');
+  if (!existsSync(mcpDir)) mkdirSync(mcpDir, { recursive: true });
+  writeFileSync(mcpRoutePath, MCP_ROUTE_CONTENT);
+  console.log('✅ Created route at app/api/mcp/route.ts');
+
+  // Instructions (extended)
   console.log(`
 📝 Next steps:
 
@@ -52,7 +60,8 @@ export function setup(projectRoot = process.cwd()) {
 
 2. Restart your dev server
 
-3. Browser logs will now appear in your terminal!
+3. Browser logs will now appear via MCP at /api/mcp (non-polluting). To fall back to terminal printing, set BROWSER_ECHO_MCP=0.
+
 `);
 }
 

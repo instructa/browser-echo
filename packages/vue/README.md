@@ -1,5 +1,21 @@
 # @browser-echo/vue
 
+## MCP Integration (optional)
+
+To stream logs to an AI assistant via the **Model Context Protocol** without cluttering your terminal, add the middleware to your dev server:
+
+```ts
+import express from 'express';
+import { createBrowserEchoMiddleware } from '@browser-echo/mcp';
+
+const app = express();
+app.use(express.json());
+app.use(createBrowserEchoMiddleware({ routeLogs: '/__client-logs', routeMcp: '/__mcp' }));
+app.listen(5173);
+```
+
+MCP endpoint: `http://localhost:5173/__mcp`. Disable MCP terminal suppression by setting `BROWSER_ECHO_MCP=0`.
+
 Vue plugin for streaming browser console logs to your dev terminal (non-Vite setups).
 
 > **💡 Using Vue with Vite?** Check out our [Vue + Vite setup guide](../vite/README.md#vue--vite) for the recommended approach using `@browser-echo/vite`.

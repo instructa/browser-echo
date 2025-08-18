@@ -1,10 +1,14 @@
 import { defineEventHandler, readBody, setResponseStatus } from 'h3';
+import { publishLogEntry, isMcpEnabled as _mcpEnvEnabled, startMcpServer } from '@browser-echo/mcp';
 
 type Level = 'log' | 'info' | 'warn' | 'error' | 'debug';
 type Entry = { level: Level | string; text: string; time?: number; stack?: string; source?: string; };
 type Payload = { sessionId?: string; entries: Entry[] };
 
 export default defineEventHandler(async (event) => {
+  try { startMcpServer(); } catch {}
+  const mcpOn = _mcpEnvEnabled();
+
   let payload: Payload | null = null;
   try { payload = (await readBody(event)) as Payload; }
   catch { setResponseStatus(event, 400); return 'invalid JSON'; }
@@ -18,8 +22,21 @@ export default defineEventHandler(async (event) => {
     const level = norm(entry.level);
     let line = `[browser] [${sid}] ${level.toUpperCase()}: ${entry.text}`;
     if (entry.source) line += ` (${entry.source})`;
-    print(level, color(level, line));
-    if (entry.stack) print(level, dim(indent(entry.stack, '    ')));
+
+    publishLogEntry({
+      sessionId: payload.sessionId ?? 'anon',
+      level,
+      text: String(entry.text ?? ''),
+      time: entry.time,
+      source: entry.source,
+      stack: entry.stack,
+      tag: '[browser]'
+    });
+
+    if (!mcpOn) {
+      print(level, color(level, line));
+      if (entry.stack) print(level, dim(indent(entry.stack, '    ')));
+    }
   }
 
   setResponseStatus(event, 204);

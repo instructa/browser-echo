@@ -3,6 +3,7 @@ import ansis from 'ansis';
 import type { BrowserLogLevel } from '@browser-echo/core';
 import { mkdirSync, appendFileSync } from 'node:fs';
 import { dirname, join as joinPath } from 'node:path';
+import { startMcpServer, handleMcpHttpRequest, publishLogEntry, isMcpEnabled as _mcpEnvEnabled } from '@browser-echo/mcp';
 
 export interface BrowserLogsToTerminalOptions {
   enabled?: boolean;
@@ -17,6 +18,8 @@ export interface BrowserLogsToTerminalOptions {
   batch?: { size?: number; interval?: number };
   truncate?: number;
   fileLog?: { enabled?: boolean; dir?: string };
+  mcpEnabled?: boolean;                 // default: true in dev
+  mcpRoute?: `/${string}`;              // default: '/__mcp'
 }
 
 type ResolvedOptions = Required<Omit<BrowserLogsToTerminalOptions, 'batch' | 'fileLog'>> & {
@@ -36,10 +39,12 @@ const DEFAULTS: ResolvedOptions = {
   stackMode: 'condensed',
   batch: { size: 20, interval: 300 },
   truncate: 10_000,
-  fileLog: { enabled: false, dir: 'logs/frontend' }
+  fileLog: { enabled: false, dir: 'logs/frontend' },
+  mcpEnabled: true,
+  mcpRoute: '/__mcp'
 };
 
-export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): any {
+export default function browserEcho
   const options: ResolvedOptions = {
     ...DEFAULTS,
     ...opts,
@@ -68,6 +73,25 @@ export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): an
     },
     configureServer(server) {
       if (!options.enabled) return;
+      try { startMcpServer(); } catch {}
+      server.middlewares.use(options.mcpRoute, (req, res, next) => {
+        // Allow only MCP methods; otherwise fall-through
+        const m = req.method || 'GET';
+        if (m !== 'GET' && m !== 'POST' && m !== 'DELETE') return next();
+        (async () => {
+          try {
+            let body: Buffer | undefined;
+            if (m === 'POST') {
+              body = await collectBody(req);
+            }
+            await handleMcpHttpRequest(req as any, res as any, body);
+          } catch (err: any) {
+            server.config.logger.error(`${options.tag} MCP error: ${err?.message || err}`);
+            res.statusCode = 500;
+            res.end('mcp error');
+          }
+        })();
+      });
       attachMiddleware(server, options);
     }
   };
@@ -89,6 +113,8 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
 
       const logger = server.config.logger;
       const sid = (payload.sessionId ?? 'anon').slice(0, 8);
+      const mcpOn = (options.mcpEnabled ?? true) && _mcpEnvEnabled();
+
       for (const entry of payload.entries) {
         const level = normalizeLevel(entry.level);
         const truncated = typeof entry.text === 'string' && entry.text.length > options.truncate
@@ -97,15 +123,36 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
         let line = `${options.tag} [${sid}] ${level.toUpperCase()}: ${truncated}`;
         if (options.showSource && entry.source) line += ` (${entry.source})`;
         const colored = options.colors ? colorize(level, line) : line;
-        print(logger, level, colored);
 
-        if (entry.stack && options.stackMode !== 'none') {
-          const lines = options.stackMode === 'full'
-            ? indent(entry.stack, '    ')
-            : `    ${(String(entry.stack).split(/\r?\n/g).find((l) => l.trim().length > 0) || '').trim()}`;
-          print(logger, level, ansis.dim(lines));
+        // Publish to MCP (non-polluting)
+        publishLogEntry({
+          sessionId: payload.sessionId ?? 'anon',
+          level,
+          text: String(entry.text ?? ''),
+          time: entry.time,
+          source: options.showSource ? entry.source : undefined,
+          stack:
+            options.stackMode === 'none'
+              ? ''
+              : options.stackMode === 'full'
+                ? (entry.stack || '')
+                : ((String(entry.stack || '').split(/\r?\n/g).find((l) => l.trim().length > 0) || '').trim()),
+          tag: options.tag
+        });
+
+        // Terminal printing only if MCP is disabled
+        if (!mcpOn) {
+          print(logger, level, colored);
+
+          if (entry.stack && options.stackMode !== 'none') {
+            const lines = options.stackMode === 'full'
+              ? indent(entry.stack, '    ')
+              : `    ${(String(entry.stack).split(/\r?\n/g).find((l) => l.trim().length > 0) || '').trim()}`;
+            print(logger, level, ansis.dim(lines));
+          }
         }
 
+        // Optional file logging remains unchanged
         if (options.fileLog.enabled) {
           const time = new Date().toISOString();
           const toFile = [`[${time}] ${line}`];

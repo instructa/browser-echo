@@ -1,0 +1,29 @@
+{
+  "name": "@browser-echo/mcp",
+  "version": "0.0.1",
+  "private": false,
+  "type": "module",
+  "main": "dist/index.mjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "peerDependencies": {
+    "express": "^4 || ^5"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "unbuild": "^2.0.0"
+  }
+}
