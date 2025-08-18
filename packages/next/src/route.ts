@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import { publishLogEntry, startMcpServer, isMcpEnabled as _mcpEnvEnabled } from '@browser-echo/mcp';
+import { publishLogEntry, startMcpServer, isMcpEnabled as _mcpEnvEnabled, getLogsAsText } from '@browser-echo/mcp';
 
 export type BrowserLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
 type Entry = { level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; };
@@ -8,6 +8,19 @@ type Payload = { sessionId?: string; entries: Entry[] };
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+export async function GET(req: NextRequest) {
+  try { startMcpServer(); } catch {}
+  const session = req.nextUrl.searchParams.get('session') || undefined;
+  const text = getLogsAsText(session || undefined);
+  return new NextResponse(text, {
+    status: 200,
+    headers: {
+      'content-type': 'text/plain; charset=utf-8',
+      'cache-control': 'no-store'
+    }
+  });
+}
 
 export async function POST(req: NextRequest) {
   try { startMcpServer(); } catch {}

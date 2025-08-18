@@ -4,7 +4,7 @@ import type { BrowserLogLevel } from '@browser-echo/core';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { mkdirSync, appendFileSync } from 'node:fs';
 import { dirname, join as joinPath } from 'node:path';
-import { startMcpServer, handleMcpHttpRequest, publishLogEntry, isMcpEnabled as _mcpEnvEnabled } from '@browser-echo/mcp';
+import { startMcpServer, handleMcpHttpRequest, publishLogEntry, isMcpEnabled as _mcpEnvEnabled, getLogsAsText } from '@browser-echo/mcp';
 
 export interface BrowserLogsToTerminalOptions {
   enabled?: boolean;
@@ -105,6 +105,25 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
   if (options.fileLog.enabled) { try { mkdirSync(dirname(logFilePath), { recursive: true }); } catch {} }
 
   server.middlewares.use(options.route, (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    if (req.method === 'GET') {
+      try {
+        const href = String((req as any).originalUrl || req.url || options.route);
+        const u = new URL(href, 'http://localhost');
+        const session = u.searchParams.get('session') || undefined;
+        const text = getLogsAsText(session || undefined);
+        res.statusCode = 200;
+        try {
+          res.setHeader('content-type', 'text/plain; charset=utf-8');
+          res.setHeader('cache-control', 'no-store');
+        } catch {}
+        res.end(text);
+      } catch {
+        res.statusCode = 500;
+        res.end('error');
+      }
+      return;
+    }
+
     if (req.method !== 'POST') return next();
     collectBody(req).then((raw) => {
       let payload: ClientPayload | null = null;

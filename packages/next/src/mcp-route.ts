@@ -7,14 +7,34 @@ export const dynamic = 'force-dynamic';
 // Utilities to forward request/response while preserving streaming/SSE.
 function copyHeaders(src: Headers): Headers {
   const dst = new Headers();
-  // Forward all headers; MCP tools often rely on "Mcp-Session-Id"
-  src.forEach((v, k) => dst.append(k, v));
+  const hopByHop = new Set([
+    'connection',
+    'keep-alive',
+    'proxy-authenticate',
+    'proxy-authorization',
+    'te',
+    'trailer',
+    'transfer-encoding',
+    'upgrade',
+    'content-length',
+    'host',
+  ]);
+  src.forEach((v, k) => {
+    if (!hopByHop.has(k.toLowerCase())) {
+      dst.append(k, v);
+    }
+  });
   return dst;
 }
 
 async function proxy(method: string, req: NextRequest): Promise<Response> {
   await ensureLocalHttpServer();
-  const upstreamUrl = getLocalMcpUrl();
+
+  // Build upstream URL and preserve query string
+  const upstreamBase = new URL(getLocalMcpUrl());
+  const upstreamUrl = new URL(upstreamBase.toString());
+  const qs = req.nextUrl.search;
+  if (qs) upstreamUrl.search = qs;
 
   // Build init for fetch
   const init: RequestInit = {
@@ -24,7 +44,7 @@ async function proxy(method: string, req: NextRequest): Promise<Response> {
 
   if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
     const buf = Buffer.from(await req.arrayBuffer());
-    init.body = buf;
+    init.body = buf as any;
   }
 
   // Stream response back to the client
@@ -46,4 +66,8 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   return proxy('DELETE', req);
+}
+
+export async function OPTIONS(req: NextRequest) {
+  return proxy('OPTIONS', req);
 }

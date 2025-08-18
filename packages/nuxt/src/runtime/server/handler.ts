@@ -1,5 +1,5 @@
 import { defineEventHandler, readBody, setResponseStatus } from 'h3';
-import { publishLogEntry, isMcpEnabled as _mcpEnvEnabled, startMcpServer } from '@browser-echo/mcp';
+import { publishLogEntry, isMcpEnabled as _mcpEnvEnabled, startMcpServer, getLogsAsText } from '@browser-echo/mcp';
 
 type Level = 'log' | 'info' | 'warn' | 'error' | 'debug';
 type Entry = { level: Level | string; text: string; time?: number; stack?: string; source?: string; };
@@ -8,6 +8,25 @@ type Payload = { sessionId?: string; entries: Entry[] };
 export default defineEventHandler(async (event) => {
   try { startMcpServer(); } catch {}
   const mcpOn = _mcpEnvEnabled();
+
+  const method = String(event.node?.req?.method || 'POST').toUpperCase();
+  if (method === 'GET') {
+    try {
+      const href = event.node?.req?.url || '/__client-logs';
+      const u = new URL(href, 'http://localhost');
+      const session = u.searchParams.get('session') || undefined;
+      const text = getLogsAsText(session || undefined);
+      try {
+        event.node.res.setHeader('content-type', 'text/plain; charset=utf-8');
+        event.node.res.setHeader('cache-control', 'no-store');
+      } catch {}
+      setResponseStatus(event, 200);
+      return text;
+    } catch {
+      setResponseStatus(event, 500);
+      return 'error';
+    }
+  }
 
   let payload: Payload | null = null;
   try { payload = (await readBody(event)) as Payload; }

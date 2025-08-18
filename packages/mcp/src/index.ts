@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 // See: https://github.com/modelcontextprotocol/typescript-sdk
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { z } from 'zod';
 
 export type BrowserLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
 
@@ -32,13 +33,34 @@ export interface StartOptions {
 
 const DEFAULT_BUFFER = 1000;
 
+const GetLogsSchema = z.object({
+  level: z.array(z.enum(['log', 'info', 'warn', 'error', 'debug'])).optional().describe('Filter by log levels'),
+  session: z.string().optional().describe('8-char session id prefix'),
+  includeStack: z.boolean().optional().default(true).describe('Include stack traces'),
+  limit: z.number().int().min(1).max(5000).optional().describe('Maximum number of entries to return'),
+  contains: z.string().optional().describe('Substring filter for log text'),
+  sinceMs: z.number().nonnegative().optional().describe('Only entries with time >= sinceMs')
+}).strict();
+
+const ClearLogsSchema = z.object({
+  session: z.string().optional().describe('8-char session id prefix to clear only one session'),
+  scope: z.enum(['soft', 'hard']).optional().default('hard').describe('soft: set baseline marker (non-destructive), hard: delete entries (default)')
+}).strict();
+
 // ------------ In-memory log store (ring buffer) ------------
 class LogStore {
   private entries: LogEntry[] = [];
   private max: number;
+  private baselineTimestamps: Map<string, number> = new Map(); // For soft clear
 
   constructor(max = DEFAULT_BUFFER) {
     this.max = Math.max(50, max | 0);
+  }
+
+  setMax(max: number) {
+    this.max = Math.max(50, max | 0);
+    // Trim oldest entries if we exceeded the new max
+    while (this.entries.length > this.max) this.entries.shift();
   }
 
   append(entry: LogEntry) {
@@ -46,13 +68,33 @@ class LogStore {
     this.entries.push(entry);
   }
 
-  clear() {
-    this.entries.length = 0;
+  clear(options?: { session?: string; scope?: 'soft' | 'hard' }) {
+    const scope = options?.scope || 'hard';
+    const session = options?.session;
+
+    if (scope === 'soft') {
+      // Set baseline timestamp for filtering
+      const key = session || '__global__';
+      this.baselineTimestamps.set(key, Date.now());
+    } else {
+      // Hard clear
+      if (session) {
+        // Clear only entries for specific session
+        this.entries = this.entries.filter(e => (e.sessionId || '').slice(0, 8) !== session);
+        // Remove any baseline for that session so future logs are visible
+        this.baselineTimestamps.delete(session);
+      } else {
+        // Clear all entries
+        this.entries.length = 0;
+        // Remove all baselines (global and per-session)
+        this.baselineTimestamps.clear();
+      }
+    }
   }
 
-  toText(): string {
+  toText(session?: string): string {
     // Render like terminal output but without ANSI
-    return this.entries
+    return this.snapshot(session)
       .map((e) => {
         const sid = (e.sessionId || 'anon').slice(0, 8);
         const lvl = (e.level || 'log').toUpperCase();
@@ -69,12 +111,45 @@ class LogStore {
       .join('\n');
   }
 
-  snapshot(): LogEntry[] {
-    return this.entries.slice();
+  snapshot(session?: string): LogEntry[] {
+    let items = this.entries.slice();
+    
+    // Apply session filter if provided
+    if (session) {
+      items = items.filter(e => (e.sessionId || '').slice(0, 8) === session);
+    }
+    
+    // Apply soft clear baseline filter
+    const baselineKey = session || '__global__';
+    const baseline = this.baselineTimestamps.get(baselineKey);
+    if (baseline) {
+      items = items.filter(e => !e.time || e.time >= baseline);
+    }
+    
+    return items;
   }
 }
 
 const STORE = new LogStore();
+
+// ------------ Validation helpers ------------
+function validateSessionId(session?: string): string | undefined {
+  if (!session) return undefined;
+  // Ensure we have at least 1 char and max 8 chars for prefix matching
+  const trimmed = String(session).trim();
+  if (trimmed.length === 0) return undefined;
+  return trimmed.slice(0, 8);
+}
+
+function validateTimestamp(sinceMs?: number): number | undefined {
+  if (sinceMs === undefined || sinceMs === null) return undefined;
+  const num = Number(sinceMs);
+  if (isNaN(num) || num < 0) return undefined;
+  // Don't allow timestamps too far in the future (1 hour)
+  const maxFuture = Date.now() + 3600000;
+  if (num > maxFuture) return maxFuture;
+  return num;
+}
 
 // ------------ MCP server singletons ------------
 let server: McpServer | null = null;
@@ -89,8 +164,13 @@ let localUrl: string | null = null;
 export function startMcpServer(opts: StartOptions = {}) {
   if (started && server && transport) return;
 
+  // Respect dynamic buffer size without losing already buffered logs
+  if (typeof opts.bufferSize === 'number' && opts.bufferSize > 0) {
+    try { STORE.setMax(opts.bufferSize); } catch {}
+  }
+
   server = new McpServer({
-    name: opts.name ?? 'browser-echo',
+    name: opts.name ?? 'Browser Echo (Frontend Logs)',
     version: opts.version ?? '0.0.1'
   });
 
@@ -99,8 +179,8 @@ export function startMcpServer(opts: StartOptions = {}) {
     'browser-logs',
     'browser-echo://logs',
     {
-      title: 'Browser Console Logs',
-      description: 'Recent client-side console logs captured by Browser Echo',
+      title: 'Frontend Browser Console Logs',
+      description: 'Recent frontend logs, console errors, warnings, React/Next hydration issues, network failures captured by Browser Echo',
       mimeType: 'text/plain'
     },
     async (uri) => {
@@ -126,8 +206,8 @@ export function startMcpServer(opts: StartOptions = {}) {
     },
     async (uri, { session }) => {
       const sid = String(session || '').slice(0, 8);
-      const content = STORE.snapshot()
-        .filter((e) => (e.sessionId || '').slice(0, 8) === sid)
+      // Use snapshot with session to also honor soft baselines for that session
+      const content = STORE.snapshot(sid)
         .map((e) => {
           const lvl = (e.level || 'log').toUpperCase();
           const tag = e.tag || '[browser]';
@@ -152,23 +232,96 @@ export function startMcpServer(opts: StartOptions = {}) {
     }
   );
 
-  // Clear buffer tool
+  // Get logs tool - NLP entry point for fetching logs
+  server.registerTool(
+    'get_logs',
+    {
+      title: 'Get Frontend Browser Logs',
+      description:
+        'Fetch recent frontend browser console logs (errors/warnings/info). ' +
+        'Use this when the user asks to check frontend logs, errors, hydration issues, or network failures.',
+      inputSchema: GetLogsSchema
+    },
+    async (args: z.infer<typeof GetLogsSchema>) => {
+      const {
+        level,
+        session,
+        includeStack = true,
+        limit = 1000,
+        contains,
+        sinceMs
+      } = args ?? {};
+
+      // Validate inputs (retain existing runtime guards for safety)
+      const validSession = validateSessionId(session);
+      const validSinceMs = validateTimestamp(sinceMs);
+
+      let items = STORE.snapshot();
+
+      // Apply filters
+      if (validSinceMs) items = items.filter(e => !e.time || e.time >= validSinceMs);
+      if (validSession) items = items.filter(e => (e.sessionId || '').slice(0, 8) === validSession);
+      if (level?.length) items = items.filter(e => level.includes(e.level));
+      if (contains) items = items.filter(e => (e.text || '').includes(contains));
+      const finalItems = includeStack ? items : items.map(e => ({ ...e, stack: '' }));
+
+      const limited = limit && finalItems.length > limit ? finalItems.slice(-limit) : finalItems;
+
+      // Text view (like terminal but no ANSI)
+      const text = limited.map(e => {
+        const sid = (e.sessionId || 'anon').slice(0, 8);
+        const lvl = (e.level || 'log').toUpperCase();
+        const tag = e.tag || '[browser]';
+        let line = `${tag} [${sid}] ${lvl}: ${e.text}`;
+        if (e.source) line += ` (${e.source})`;
+        if (includeStack && e.stack?.trim()) {
+          const indented = e.stack.split(/\r?\n/g).map(l => l ? `    ${l}` : l).join('\n');
+          return `${line}\n${indented}`;
+        }
+        return line;
+      }).join('\n');
+
+      return {
+        content: [
+          { type: 'text', text },
+          { type: 'json', json: { entries: limited } }
+        ]
+      };
+    }
+  );
+
+  // Clear buffer tool with enhanced options
   server.registerTool(
     'clear_logs',
     {
-      title: 'Clear Browser Logs',
-      description: 'Clears the stored browser console log buffer on the MCP server',
-      inputSchema: {} as any
+      title: 'Clear Frontend Browser Logs',
+      description: 'Clears the stored frontend browser console log buffer for fresh capture. Use this to start a clean capture before reproducing issues',
+      inputSchema: ClearLogsSchema
     },
-    async () => {
-      STORE.clear();
-      return { content: [{ type: 'text', text: 'Browser log buffer cleared.' }] };
+    async (args: z.infer<typeof ClearLogsSchema>) => {
+      const { session, scope = 'hard' } = args ?? {};
+      const validSession = validateSessionId(session);
+      STORE.clear({ session: validSession, scope });
+
+      let message = 'Browser log buffer ';
+      if (scope === 'soft') {
+        message += 'baseline set';
+      } else {
+        message += 'cleared';
+      }
+      if (validSession) {
+        message += ` for session ${validSession}`;
+      }
+      message += '.';
+
+      return { content: [{ type: 'text', text: message }] };
     }
   );
 
   // Create a single, stateful transport instance (session-aware)
   transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => randomUUID(),
+    enableJsonResponse: true,
     // In local dev, DNS rebinding protection can be enabled by consumers if desired.
     // We keep it permissive by default to avoid blocking tools.
     enableDnsRebindingProtection: false
@@ -177,6 +330,15 @@ export function startMcpServer(opts: StartOptions = {}) {
   // Connect server to transport once
   void server.connect(transport);
   started = true;
+}
+
+export function getLogsAsText(session?: string): string {
+  const sid = validateSessionId(session);
+  return STORE.toText(sid);
+}
+export function getLogsSnapshot(session?: string): LogEntry[] {
+  const sid = validateSessionId(session);
+  return STORE.snapshot(sid);
 }
 
 /**
@@ -190,8 +352,92 @@ export async function handleMcpHttpRequest(
 ): Promise<void> {
   if (!started || !server || !transport) startMcpServer();
 
-  // @ts-expect-error: SDK's transport has handleRequest(req,res,body)
-  await transport!.handleRequest(req as any, res as any, body);
+  // CORS + expose session id per SDK guidance
+  try {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'content-type, mcp-session-id');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, GET, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id');
+  } catch {}
+
+  const method = String(req.method || '').toUpperCase();
+
+  // Preflight
+  if (method === 'OPTIONS') {
+    if (!res.headersSent) res.statusCode = 204;
+    res.end();
+    return;
+  }
+
+  // Normalize the body for the SDK (expects an object, not a string or Buffer).
+  // Accept Buffer|string|object from various runtimes (Vite/Next/Nuxt/local server).
+  let payload: unknown = undefined;
+
+  // If the caller passed a Buffer, attempt to parse it as JSON.
+  if (Buffer.isBuffer(body)) {
+    const text = body.toString('utf-8');
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      // If this was a POST/PUT/PATCH with invalid JSON, return a spec-compliant parse error.
+      const m = String(req.method || '').toUpperCase();
+      if (m === 'POST' || m === 'PUT' || m === 'PATCH') {
+        if (!res.headersSent) {
+          res.statusCode = 400;
+          try { res.setHeader('content-type', 'application/json'); } catch {}
+        }
+        res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32700, message: 'Parse error' }, id: null }));
+        return;
+      }
+      // For non-body methods, just leave payload undefined.
+      payload = undefined;
+    }
+  }
+  // If some caller already parsed JSON and passed a string (older code paths), parse it now.
+  else if (typeof (body as unknown) === 'string') {
+    const text = body as unknown as string;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      const m = String(req.method || '').toUpperCase();
+      if (m === 'POST' || m === 'PUT' || m === 'PATCH') {
+        if (!res.headersSent) {
+          res.statusCode = 400;
+          try { res.setHeader('content-type', 'application/json'); } catch {}
+        }
+        res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32700, message: 'Parse error' }, id: null }));
+        return;
+      }
+      payload = undefined;
+    }
+  }
+  // If an object-like was provided, pass it through unchanged.
+  else if (body && typeof body === 'object') {
+    payload = body as unknown;
+  }
+  // Else (no body provided), leave payload undefined and let the transport handle it.
+
+  // For GET/DELETE: require a session id, otherwise respond with clear 405 (not "Session not found")
+  if (method === 'GET' || method === 'DELETE') {
+    const sidHeader = (req.headers['mcp-session-id'] as string | undefined) || '';
+    if (!sidHeader) {
+      if (!res.headersSent) {
+        res.statusCode = 405;
+        try {
+          res.setHeader('Allow', 'POST');
+          res.setHeader('content-type', 'application/json');
+        } catch {}
+      }
+      res.end(JSON.stringify({
+        jsonrpc: '2.0',
+        error: { code: -32000, message: 'Method not allowed. Initialize with POST to obtain Mcp-Session-Id, then include it for GET/DELETE.' },
+        id: null
+      }));
+      return;
+    }
+  }
+
+  await transport!.handleRequest(req as any, res as any, payload as any);
 }
 
 /**
@@ -264,6 +510,7 @@ export function isMcpEnabled(): boolean {
 /**
  * Create a single middleware that wires:
  *   - POST /__client-logs  -> buffers logs, NO terminal printing (non-polluting)
+ *   - GET  /__client-logs  -> returns current buffer as text/plain (diagnostics)
  *   - ANY  /__mcp          -> MCP HTTP transport entrypoint
  */
 export function createBrowserEchoMiddleware(options?: {
@@ -298,6 +545,25 @@ export function createBrowserEchoMiddleware(options?: {
         await handleMcpHttpRequest(req, res, body);
       } catch (e) {
         next(e);
+      }
+      return;
+    }
+
+    if (url.startsWith(routeLogs) && req.method === 'GET') {
+      try {
+        const href = (req.originalUrl || req.url || '') as string;
+        const u = new URL(href, 'http://localhost');
+        const session = u.searchParams.get('session') || undefined;
+        const text = getLogsAsText(session || undefined);
+        res.statusCode = 200;
+        try {
+          res.setHeader('content-type', 'text/plain; charset=utf-8');
+          res.setHeader('cache-control', 'no-store');
+        } catch {}
+        res.end(text);
+      } catch (e) {
+        res.statusCode = 500;
+        res.end('error');
       }
       return;
     }

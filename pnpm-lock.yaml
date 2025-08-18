@@ -233,6 +233,9 @@ importers:
       express:
         specifier: ^4 || ^5
         version: 5.1.0
+      zod:
+        specifier: ^3.24.2
+        version: 3.25.76
     devDependencies:
       typescript:
         specifier: ^5.5.4
