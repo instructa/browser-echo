@@ -355,7 +355,11 @@ export async function handleMcpHttpRequest(
   // CORS + expose session id per SDK guidance
   try {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', 'content-type, mcp-session-id');
+    // Allow both canonical and lowercase variants; include Accept & MCP-Protocol-Version for spec-compliant clients
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'content-type, accept, mcp-session-id, Mcp-Session-Id, mcp-protocol-version, MCP-Protocol-Version'
+    );
     res.setHeader('Access-Control-Allow-Methods', 'POST, GET, DELETE, OPTIONS');
     res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id');
   } catch {}
@@ -428,9 +432,13 @@ export async function handleMcpHttpRequest(
           res.setHeader('content-type', 'application/json');
         } catch {}
       }
+      // Make the guidance explicit: POST initialize → read Mcp-Session-Id → include for GET/DELETE (+ protocol header)
       res.end(JSON.stringify({
         jsonrpc: '2.0',
-        error: { code: -32000, message: 'Method not allowed. Initialize with POST to obtain Mcp-Session-Id, then include it for GET/DELETE.' },
+        error: {
+          code: -32000,
+          message: 'Method not allowed. To open a server stream, first POST an InitializeRequest to this MCP endpoint and read the Mcp-Session-Id response header. Include that Mcp-Session-Id (and MCP-Protocol-Version) on all subsequent GET/DELETE/POST requests.'
+        },
         id: null
       }));
       return;

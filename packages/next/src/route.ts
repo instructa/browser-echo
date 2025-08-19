@@ -10,7 +10,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  try { startMcpServer(); } catch {}
+  try { startMcpServer(); } catch (e) { console.error('[browser-echo] MCP server failed to start:', e); }
   const session = req.nextUrl.searchParams.get('session') || undefined;
   const text = getLogsAsText(session || undefined);
   return new NextResponse(text, {
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  try { startMcpServer(); } catch {}
+  try { startMcpServer(); } catch (e) { console.error('[browser-echo] MCP server failed to start:', e); }
   const mcpOn = _mcpEnvEnabled();
 
   let payload: Payload | null = null;

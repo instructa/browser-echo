@@ -6,7 +6,7 @@ type Entry = { level: Level | string; text: string; time?: number; stack?: strin
 type Payload = { sessionId?: string; entries: Entry[] };
 
 export default defineEventHandler(async (event) => {
-  try { startMcpServer(); } catch {}
+  try { startMcpServer(); } catch (e) { console.error('[browser-echo] MCP server failed to start:', e); }
   const mcpOn = _mcpEnvEnabled();
 
   const method = String(event.node?.req?.method || 'POST').toUpperCase();

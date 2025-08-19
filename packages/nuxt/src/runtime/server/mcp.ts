@@ -3,7 +3,7 @@ import { handleMcpHttpRequest, startMcpServer } from '@browser-echo/mcp';
 
 export default defineEventHandler(async (event) => {
   // Ensure MCP server is ready
-  try { startMcpServer(); } catch {}
+  try { startMcpServer(); } catch (e) { console.error('[browser-echo] MCP server failed to start:', e); }
 
   const req = event.node.req;
   const res = event.node.res;

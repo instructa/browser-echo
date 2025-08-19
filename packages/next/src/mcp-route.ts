@@ -28,7 +28,15 @@ function copyHeaders(src: Headers): Headers {
 }
 
 async function proxy(method: string, req: NextRequest): Promise<Response> {
-  await ensureLocalHttpServer();
+  try {
+    await ensureLocalHttpServer();
+  } catch (err: any) {
+    const message = `[browser-echo] MCP server failed to start: ${err?.message || String(err)}`;
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { 'content-type': 'application/json' }
+    });
+  }
 
   // Build upstream URL and preserve query string
   const upstreamBase = new URL(getLocalMcpUrl());

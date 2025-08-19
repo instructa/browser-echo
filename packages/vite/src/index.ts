@@ -74,7 +74,16 @@ export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): im
     },
     configureServer(server) {
       if (!options.enabled) return;
-      try { startMcpServer(); } catch {}
+      try {
+        startMcpServer();
+        try {
+          server.config.logger.info(`${options.tag} MCP endpoint mounted at ${options.mcpRoute}`);
+        } catch {}
+      } catch (e: any) {
+        try {
+          server.config.logger.error(`${options.tag} MCP server failed to start: ${e?.message || e}`);
+        } catch {}
+      }
       server.middlewares.use(options.mcpRoute, (req: IncomingMessage, res: ServerResponse, _next: () => void) => {
         const m = (req.method || 'GET').toUpperCase();
         (async () => {
