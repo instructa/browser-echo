@@ -44,10 +44,23 @@ async function proxy(method: string, req: NextRequest): Promise<Response> {
   const qs = req.nextUrl.search;
   if (qs) upstreamUrl.search = qs;
 
+  // Prepare headers to forward; nuke hop-by-hop headers
+  const forwardHeaders = copyHeaders(req.headers);
+
+  // Ensure SSE friendliness on GET (defensive in case a client omits Accept)
+  if (method === 'GET') {
+    const accept = forwardHeaders.get('accept') || '';
+    if (!/\btext\/event-stream\b/i.test(accept)) {
+      forwardHeaders.set('accept', accept ? `${accept}, text/event-stream` : 'text/event-stream');
+    }
+    forwardHeaders.set('connection', 'keep-alive');
+    // Clients are recommended to include MCP-Protocol-Version; we simply forward what we received.
+  }
+
   // Build init for fetch
   const init: RequestInit = {
     method,
-    headers: copyHeaders(req.headers)
+    headers: forwardHeaders
   };
 
   if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
@@ -57,10 +70,23 @@ async function proxy(method: string, req: NextRequest): Promise<Response> {
 
   // Stream response back to the client
   const upstream = await fetch(upstreamUrl, init);
-  const headers = copyHeaders(upstream.headers);
+
+  // Copy upstream response headers, then harden for SSE responses
+  const respHeaders = copyHeaders(upstream.headers);
+  const ct = upstream.headers.get('content-type') || '';
+
+  if (/^text\/event-stream\b/i.test(ct)) {
+    // Prevent buffering and keep the connection alive for SSE
+    respHeaders.set('content-type', 'text/event-stream');
+    respHeaders.set('cache-control', 'no-cache, no-transform');
+    respHeaders.set('connection', 'keep-alive');
+    // Disable proxy buffering where applicable (e.g., nginx)
+    respHeaders.set('x-accel-buffering', 'no');
+  }
+
   return new Response(upstream.body, {
     status: upstream.status,
-    headers
+    headers: respHeaders
   });
 }
 

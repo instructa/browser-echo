@@ -481,6 +481,32 @@ export async function ensureLocalHttpServer(): Promise<void> {
     }
   });
 
+  // --- NEW: Prevent SSE connections from being terminated by default Node timeouts ---
+  try {
+    // Disable per-request inactivity timeout (prevents ~2-5 min server-side termination across Node versions)
+    // @ts-expect-error - requestTimeout exists on http.Server in Node, but TS may not include in some lib targets
+    localHttpServer.requestTimeout = 0;
+
+    // Disable header timeout to avoid premature close before stream fully established on slow environments
+    // @ts-expect-error - headersTimeout exists on http.Server in Node
+    localHttpServer.headersTimeout = 0;
+
+    // Also set legacy/general socket timeout to 0 (no timeout)
+    // @ts-expect-error - setTimeout on http.Server sets the socket timeout
+    typeof localHttpServer.setTimeout === 'function' && localHttpServer.setTimeout(0);
+
+    // Keep TCP connection alive to maintain long-lived SSE streams; send probes every 60s
+    localHttpServer.on('connection', (socket: any) => {
+      try {
+        socket.setKeepAlive?.(true, 60_000);
+        socket.setNoDelay?.(true);
+      } catch {}
+    });
+  } catch {
+    // Best-effort hardening; ignore if any of the props/methods are unavailable in the host Node
+  }
+  // -------------------------------------------------------------------------------
+
   await new Promise<void>((resolve, reject) => {
     localHttpServer!.listen(0, '127.0.0.1', () => resolve());
     localHttpServer!.once('error', reject);
