@@ -7,5 +7,5 @@ export default defineBuildConfig({
   rollup: {
     emitCJS: false,
   },
-  externals: ['vite', 'ansis', '@browser-echo/core', '@browser-echo/mcp']
+  externals: ['vite', 'ansis', '@browser-echo/core']
 });

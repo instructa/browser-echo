@@ -1,6 +1,5 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import { publishLogEntry, startMcpServer, isMcpEnabled as _mcpEnvEnabled, getLogsAsText } from '@browser-echo/mcp';
 
 export type BrowserLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
 type Entry = { level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; };
@@ -9,23 +8,7 @@ type Payload = { sessionId?: string; entries: Entry[] };
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(req: NextRequest) {
-  try { startMcpServer(); } catch (e) { console.error('[browser-echo] MCP server failed to start:', e); }
-  const session = req.nextUrl.searchParams.get('session') || undefined;
-  const text = getLogsAsText(session || undefined);
-  return new NextResponse(text, {
-    status: 200,
-    headers: {
-      'content-type': 'text/plain; charset=utf-8',
-      'cache-control': 'no-store'
-    }
-  });
-}
-
 export async function POST(req: NextRequest) {
-  try { startMcpServer(); } catch (e) { console.error('[browser-echo] MCP server failed to start:', e); }
-  const mcpOn = _mcpEnvEnabled();
-
   let payload: Payload | null = null;
   try { payload = (await req.json()) as Payload; }
   catch { return new NextResponse('invalid JSON', { status: 400 }); }
@@ -36,21 +19,8 @@ export async function POST(req: NextRequest) {
     const level = norm(entry.level);
     let line = `[browser] [${sid}] ${level.toUpperCase()}: ${entry.text}`;
     if (entry.source) line += ` (${entry.source})`;
-
-    publishLogEntry({
-      sessionId: payload.sessionId ?? 'anon',
-      level,
-      text: String(entry.text ?? ''),
-      time: entry.time,
-      source: entry.source,
-      stack: entry.stack,
-      tag: '[browser]'
-    });
-
-    if (!mcpOn) {
-      print(level, color(level, line));
-      if (entry.stack) print(level, dim(indent(entry.stack, '    ')));
-    }
+    print(level, color(level, line));
+    if (entry.stack) print(level, dim(indent(entry.stack, '    ')));
   }
   return new NextResponse(null, { status: 204 });
 }

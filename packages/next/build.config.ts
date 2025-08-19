@@ -13,5 +13,5 @@ export default defineBuildConfig({
     emitCJS: false,
     esbuild: { jsx: 'automatic', jsxImportSource: 'react' }
   },
-  externals: ['next', 'react', 'react-dom', 'next/script', 'react/jsx-runtime', '@browser-echo/core', '@browser-echo/mcp']
+  externals: ['next', 'react', 'react-dom', 'next/script', 'react/jsx-runtime', '@browser-echo/core']
 });

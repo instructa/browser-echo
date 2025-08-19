@@ -8,8 +8,6 @@ export interface NuxtBrowserEchoOptions {
   tag?: string;
   batch?: { size?: number; interval?: number };
   stackMode?: 'full' | 'condensed' | 'none';
-  mcpEnabled?: boolean;              // default true in dev
-  mcpRoute?: `/${string}`;           // default '/__mcp'
 }
 
 const module: any = defineNuxtModule<NuxtBrowserEchoOptions>({
@@ -21,32 +19,11 @@ const module: any = defineNuxtModule<NuxtBrowserEchoOptions>({
     preserveConsole: true,
     tag: '[browser]',
     batch: { size: 20, interval: 300 },
-    stackMode: 'condensed',
-    mcpEnabled: true,
-    mcpRoute: '/__mcp'
+    stackMode: 'condensed'
   },
   setup(options, nuxt) {
     if (!nuxt.options.dev || options.enabled === false) return;
     const r = createResolver(import.meta.url);
-
-    addServerHandler({
-      route: options.mcpRoute!,
-      handler: r.resolve('./runtime/server/mcp')
-    });
-
-    const serverInitTpl = addTemplate({
-      filename: 'browser-echo.mcp.server.mjs',
-      getContents: () => `
-import { startMcpServer } from '@browser-echo/mcp';
-export default () => {
-  if (process.dev) {
-    process.env.BROWSER_ECHO_MCP = ${JSON.stringify(options.mcpEnabled !== false ? '1' : '0')};
-    try { startMcpServer(); } catch (e) { console.error('[browser-echo] MCP server failed to start:', e); }
-  }
-};
-`
-    });
-    addPlugin({ src: serverInitTpl.dst, mode: 'server' });
 
     addServerHandler({
       route: options.route!,

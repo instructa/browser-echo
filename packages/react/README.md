@@ -1,28 +1,5 @@
 # @browser-echo/react
 
-## MCP Integration (optional, non‑polluting logs)
-
-If you use an AI assistant that supports **MCP (Model Context Protocol)**, you can expose your browser logs as an MCP server without printing them to your terminal.
-
-Add our ready-made middleware to your dev server:
-
-```ts
-import express from 'express';
-import { createBrowserEchoMiddleware } from '@browser-echo/mcp';
-
-const app = express();
-app.use(express.json());
-app.use(createBrowserEchoMiddleware({
-  routeLogs: '/__client-logs', // matches the BrowserEcho client route
-  routeMcp: '/__mcp',
-  tag: '[browser]'
-}));
-
-app.listen(5173);
-```
-
-Your AI client can connect to `http://localhost:5173/__mcp` using MCP Streamable HTTP. To fall back to terminal printing, set `BROWSER_ECHO_MCP=0` in your environment.
-
 React component for streaming browser console logs to your dev terminal (non-Vite setups).
 
 > **💡 Using React with Vite?** Check out our [React + Vite setup guide](../vite/README.md#react--vite) for the recommended approach using `@browser-echo/vite`.

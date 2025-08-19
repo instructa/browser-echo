@@ -25,9 +25,8 @@
     "vite": ">=4.0.0"
   },
   "dependencies": {
-    "@browser-echo/core": "workspace:*",
-    "@browser-echo/mcp": "workspace:*",
-    "ansis": "^4.1.0"
+    "ansis": "^3.2.0",
+    "@browser-echo/core": "workspace:*"
   },
   "scripts": {
     "build": "unbuild",
@@ -36,7 +35,7 @@
     "test": "vitest run packages/vite"
   },
   "devDependencies": {
-    "typescript": "^5.9.2",
-    "unbuild": "^3.6.1"
+    "unbuild": "^2.0.0",
+    "typescript": "^5.5.4"
   }
 }

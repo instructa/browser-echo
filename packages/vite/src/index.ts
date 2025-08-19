@@ -1,10 +1,8 @@
 // Avoid exporting Vite types to prevent cross-version type mismatches in consumers
 import ansis from 'ansis';
 import type { BrowserLogLevel } from '@browser-echo/core';
-import type { IncomingMessage, ServerResponse } from 'node:http';
 import { mkdirSync, appendFileSync } from 'node:fs';
 import { dirname, join as joinPath } from 'node:path';
-import { startMcpServer, handleMcpHttpRequest, publishLogEntry, isMcpEnabled as _mcpEnvEnabled, getLogsAsText } from '@browser-echo/mcp';
 
 export interface BrowserLogsToTerminalOptions {
   enabled?: boolean;
@@ -19,8 +17,6 @@ export interface BrowserLogsToTerminalOptions {
   batch?: { size?: number; interval?: number };
   truncate?: number;
   fileLog?: { enabled?: boolean; dir?: string };
-  mcpEnabled?: boolean;                 // default: true in dev
-  mcpRoute?: `/${string}`;              // default: '/__mcp'
 }
 
 type ResolvedOptions = Required<Omit<BrowserLogsToTerminalOptions, 'batch' | 'fileLog'>> & {
@@ -40,12 +36,10 @@ const DEFAULTS: ResolvedOptions = {
   stackMode: 'condensed',
   batch: { size: 20, interval: 300 },
   truncate: 10_000,
-  fileLog: { enabled: false, dir: 'logs/frontend' },
-  mcpEnabled: true,
-  mcpRoute: '/__mcp'
+  fileLog: { enabled: false, dir: 'logs/frontend' }
 };
 
-export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): import('vite').Plugin {
+export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): any {
   const options: ResolvedOptions = {
     ...DEFAULTS,
     ...opts,
@@ -74,35 +68,6 @@ export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): im
     },
     configureServer(server) {
       if (!options.enabled) return;
-      try {
-        startMcpServer();
-        try {
-          server.config.logger.info(`${options.tag} MCP endpoint mounted at ${options.mcpRoute}`);
-        } catch {}
-      } catch (e: any) {
-        try {
-          server.config.logger.error(`${options.tag} MCP server failed to start: ${e?.message || e}`);
-        } catch {}
-      }
-      server.middlewares.use(options.mcpRoute, (req: IncomingMessage, res: ServerResponse, _next: () => void) => {
-        const m = (req.method || 'GET').toUpperCase();
-        (async () => {
-          try {
-            let body: Buffer | undefined;
-            if (m === 'POST' || m === 'PUT' || m === 'PATCH') {
-              body = await collectBody(req);
-            }
-            await handleMcpHttpRequest(req as any, res as any, body);
-          } catch (err: any) {
-            server.config.logger.error(`${options.tag} MCP error: ${err?.message || err}`);
-            if (!res.headersSent) {
-              res.statusCode = 500;
-              try { res.setHeader('content-type', 'application/json'); } catch {}
-            }
-            res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal server error' }, id: null }));
-          }
-        })();
-      });
       attachMiddleware(server, options);
     }
   };
@@ -113,26 +78,7 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
   const logFilePath = joinPath(options.fileLog.dir, `dev-${sessionStamp}.log`);
   if (options.fileLog.enabled) { try { mkdirSync(dirname(logFilePath), { recursive: true }); } catch {} }
 
-  server.middlewares.use(options.route, (req: IncomingMessage, res: ServerResponse, next: () => void) => {
-    if (req.method === 'GET') {
-      try {
-        const href = String((req as any).originalUrl || req.url || options.route);
-        const u = new URL(href, 'http://localhost');
-        const session = u.searchParams.get('session') || undefined;
-        const text = getLogsAsText(session || undefined);
-        res.statusCode = 200;
-        try {
-          res.setHeader('content-type', 'text/plain; charset=utf-8');
-          res.setHeader('cache-control', 'no-store');
-        } catch {}
-        res.end(text);
-      } catch {
-        res.statusCode = 500;
-        res.end('error');
-      }
-      return;
-    }
-
+  server.middlewares.use(options.route, (req, res, next) => {
     if (req.method !== 'POST') return next();
     collectBody(req).then((raw) => {
       let payload: ClientPayload | null = null;
@@ -143,8 +89,6 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
 
       const logger = server.config.logger;
       const sid = (payload.sessionId ?? 'anon').slice(0, 8);
-      const mcpOn = (options.mcpEnabled ?? true) && _mcpEnvEnabled();
-
       for (const entry of payload.entries) {
         const level = normalizeLevel(entry.level);
         const truncated = typeof entry.text === 'string' && entry.text.length > options.truncate
@@ -153,36 +97,15 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
         let line = `${options.tag} [${sid}] ${level.toUpperCase()}: ${truncated}`;
         if (options.showSource && entry.source) line += ` (${entry.source})`;
         const colored = options.colors ? colorize(level, line) : line;
+        print(logger, level, colored);
 
-        // Publish to MCP (non-polluting)
-        publishLogEntry({
-          sessionId: payload.sessionId ?? 'anon',
-          level,
-          text: String(entry.text ?? ''),
-          time: entry.time,
-          source: options.showSource ? entry.source : undefined,
-          stack:
-            options.stackMode === 'none'
-              ? ''
-              : options.stackMode === 'full'
-                ? (entry.stack || '')
-                : ((String(entry.stack || '').split(/\r?\n/g).find((l) => l.trim().length > 0) || '').trim()),
-          tag: options.tag
-        });
-
-        // Terminal printing only if MCP is disabled
-        if (!mcpOn) {
-          print(logger, level, colored);
-
-          if (entry.stack && options.stackMode !== 'none') {
-            const lines = options.stackMode === 'full'
-              ? indent(entry.stack, '    ')
-              : `    ${(String(entry.stack).split(/\r?\n/g).find((l) => l.trim().length > 0) || '').trim()}`;
-            print(logger, level, ansis.dim(lines));
-          }
+        if (entry.stack && options.stackMode !== 'none') {
+          const lines = options.stackMode === 'full'
+            ? indent(entry.stack, '    ')
+            : `    ${(String(entry.stack).split(/\r?\n/g).find((l) => l.trim().length > 0) || '').trim()}`;
+          print(logger, level, ansis.dim(lines));
         }
 
-        // Optional file logging remains unchanged
         if (options.fileLog.enabled) {
           const time = new Date().toISOString();
           const toFile = [`[${time}] ${line}`];

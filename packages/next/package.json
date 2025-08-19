@@ -41,8 +41,7 @@
     "react-dom": ">=18.0.0"
   },
   "dependencies": {
-    "@browser-echo/core": "workspace:*",
-    "@browser-echo/mcp": "workspace:*"
+    "@browser-echo/core": "workspace:*"
   },
   "scripts": {
     "build": "unbuild",
@@ -51,7 +50,7 @@
     "test": "vitest run packages/next"
   },
   "devDependencies": {
-    "typescript": "^5.9.2",
-    "unbuild": "^3.6.1"
+    "unbuild": "^2.0.0",
+    "typescript": "^5.5.4"
   }
 }
