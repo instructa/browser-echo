@@ -34,7 +34,7 @@
     "test": "vitest run packages/vue"
   },
   "devDependencies": {
-    "unbuild": "^2.0.0",
-    "typescript": "^5.5.4"
+    "typescript": "^5.9.2",
+    "unbuild": "^3.6.1"
   }
 }
