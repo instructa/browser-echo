@@ -1,6 +1,10 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
+const MCP_URL = (process.env.BROWSER_ECHO_MCP_URL || '').replace(/\/$/, '');
+const MCP_LOGS_ROUTE = process.env.BROWSER_ECHO_MCP_LOGS_ROUTE || '/__client-logs';
+const SUPPRESS_TERMINAL = MCP_URL && process.env.BROWSER_ECHO_SUPPRESS_TERMINAL !== '0';
+
 export type BrowserLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
 type Entry = { level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; };
 type Payload = { sessionId?: string; entries: Entry[] };
@@ -14,13 +18,29 @@ export async function POST(req: NextRequest) {
   catch { return new NextResponse('invalid JSON', { status: 400 }); }
   if (!payload || !Array.isArray(payload.entries)) return new NextResponse('invalid payload', { status: 400 });
 
+  // Forward to MCP server if configured (fire-and-forget)
+  if (MCP_URL) {
+    try {
+      // keepalive helps with page unloads
+      fetch(`${MCP_URL}${MCP_LOGS_ROUTE}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+        keepalive: true,
+        cache: 'no-store',
+      }).catch(() => void 0);
+    } catch {}
+  }
+
+  const shouldPrint = !SUPPRESS_TERMINAL;
+
   const sid = (payload.sessionId ?? 'anon').slice(0, 8);
   for (const entry of payload.entries) {
     const level = norm(entry.level);
     let line = `[browser] [${sid}] ${level.toUpperCase()}: ${entry.text}`;
     if (entry.source) line += ` (${entry.source})`;
-    print(level, color(level, line));
-    if (entry.stack) print(level, dim(indent(entry.stack, '    ')));
+    if (shouldPrint) print(level, color(level, line));
+    if (entry.stack && shouldPrint) print(level, dim(indent(entry.stack, '    ')));
   }
   return new NextResponse(null, { status: 204 });
 }

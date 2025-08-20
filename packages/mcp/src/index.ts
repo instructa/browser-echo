@@ -1,46 +1,37 @@
 #!/usr/bin/env node
 
-import type { McpToolContext } from './types'
-import { runMain as _runMain, defineCommand } from 'citty'
-import { version } from '../package.json'
-import { createServer, startServer, stopServer } from './server'
-import { getLogsTool } from './tools/getLogs'
-import { clearLogsTool } from './tools/clearLogs'
+import { defineCommand, runMain as _runMain } from 'citty';
+import { version } from '../package.json';
+
+import { createServer, startServer, stopServer } from './server';
 
 const cli = defineCommand({
   meta: {
     name: 'browser-echo-mcp',
     version,
-    description: 'Run the MCP starter with stdio, http, or sse transport',
+    description: 'MCP server for Browser Echo using Streamable HTTP transport'
   },
   args: {
-    http: { type: 'boolean', description: 'Run with HTTP transport' },
-    sse: { type: 'boolean', description: 'Run with SSE transport' },
-    stdio: { type: 'boolean', description: 'Run with stdio transport (default)' },
-    port: { type: 'string', description: 'Port for http/sse (default 3000)', default: '3000' },
-    endpoint: { type: 'string', description: 'HTTP endpoint (default /mcp)', default: '/mcp' },
+    port: { type: 'string', description: 'HTTP port (default 5179)', default: '5179' },
+    host: { type: 'string', description: 'HTTP host (default 127.0.0.1)', default: '127.0.0.1' },
+    endpoint: { type: 'string', description: 'MCP endpoint path (default /mcp)', default: '/mcp' },
+    logsRoute: { type: 'string', description: 'Logs ingest route (default /__client-logs)', default: '/__client-logs' },
+    buffer: { type: 'string', description: 'Max in-memory entries (default 1000)' }
   },
   async run({ args }) {
-    const mode = args.http ? 'http' : args.sse ? 'sse' : 'stdio'
-    const mcp = createServer({ name: 'my-mcp-server', version })
+    const mcp = createServer({ name: 'Browser Echo (Frontend Logs)', version });
 
-    process.on('SIGTERM', () => stopServer(mcp))
-    process.on('SIGINT', () => stopServer(mcp))
+    process.on('SIGTERM', () => stopServer(mcp));
+    process.on('SIGINT', () => stopServer(mcp));
 
-    getLogsTool({ mcp } as McpToolContext)
-    clearLogsTool({ mcp } as McpToolContext)
+    await startServer(mcp, {
+      type: 'http',
+      host: String(args.host || '127.0.0.1'),
+      port: Number(args.port || '5179') | 0,
+      endpoint: String(args.endpoint || '/mcp') as `/${string}`,
+      logsRoute: String(args.logsRoute || '/__client-logs') as `/${string}`
+    });
+  }
+});
 
-    if (mode === 'http') {
-      await startServer(mcp, { type: 'http', port: Number(args.port), endpoint: args.endpoint })
-    }
-    else if (mode === 'sse') {
-      console.log('Starting SSE server...')
-      await startServer(mcp, { type: 'sse', port: Number(args.port) })
-    }
-    else if (mode === 'stdio') {
-      await startServer(mcp, { type: 'stdio' })
-    }
-  },
-})
-
-export const runMain = () => _runMain(cli)
+export const runMain = () => _runMain(cli);

@@ -9,7 +9,11 @@
     "cleanup": "pnpm tsx scripts/cleanup.ts",
     "test": "vitest run --reporter=dot",
     "test:watch": "vitest",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "mcp": "node packages/mcp/dist/cli.mjs",
+    "mcp:port": "node packages/mcp/dist/cli.mjs --port",
+    "mcp:dev": "pnpm tsx packages/mcp/src/index.ts",
+    "mcp:build": "pnpm --filter @browser-echo/mcp run build"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

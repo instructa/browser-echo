@@ -17,11 +17,13 @@ export interface BrowserLogsToTerminalOptions {
   batch?: { size?: number; interval?: number };
   truncate?: number;
   fileLog?: { enabled?: boolean; dir?: string };
+  mcp?: { url?: string; routeLogs?: `/${string}`; suppressTerminal?: boolean; headers?: Record<string,string> };
 }
 
-type ResolvedOptions = Required<Omit<BrowserLogsToTerminalOptions, 'batch' | 'fileLog'>> & {
+type ResolvedOptions = Required<Omit<BrowserLogsToTerminalOptions, 'batch' | 'fileLog' | 'mcp'>> & {
   batch: Required<NonNullable<BrowserLogsToTerminalOptions['batch']>>;
   fileLog: Required<NonNullable<BrowserLogsToTerminalOptions['fileLog']>>;
+  mcp: { url: string; routeLogs: `/${string}`; suppressTerminal: boolean; headers: Record<string,string> };
 };
 
 const DEFAULTS: ResolvedOptions = {
@@ -36,7 +38,8 @@ const DEFAULTS: ResolvedOptions = {
   stackMode: 'condensed',
   batch: { size: 20, interval: 300 },
   truncate: 10_000,
-  fileLog: { enabled: false, dir: 'logs/frontend' }
+  fileLog: { enabled: false, dir: 'logs/frontend' },
+  mcp: { url: '', routeLogs: '/__client-logs', suppressTerminal: true, headers: {} }
 };
 
 export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): any {
@@ -44,7 +47,15 @@ export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): an
     ...DEFAULTS,
     ...opts,
     batch: { ...DEFAULTS.batch, ...(opts.batch ?? {}) },
-    fileLog: { ...DEFAULTS.fileLog, ...(opts.fileLog ?? {}) }
+    fileLog: { ...DEFAULTS.fileLog, ...(opts.fileLog ?? {}) },
+    mcp: {
+      url: opts.mcp?.url || process.env.BROWSER_ECHO_MCP_URL || '',
+      routeLogs: (opts.mcp?.routeLogs || (process.env.BROWSER_ECHO_MCP_LOGS_ROUTE as `/${string}`) || '/__client-logs') as `/${string}`,
+      suppressTerminal: typeof opts.mcp?.suppressTerminal === 'boolean'
+        ? opts.mcp.suppressTerminal
+        : !!(opts.mcp?.url || process.env.BROWSER_ECHO_MCP_URL) && process.env.BROWSER_ECHO_SUPPRESS_TERMINAL !== '0',
+      headers: opts.mcp?.headers || {}
+    }
   };
   const VIRTUAL_ID = '\0virtual:browser-echo';
   const PUBLIC_ID = 'virtual:browser-echo';
@@ -78,6 +89,8 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
   const logFilePath = joinPath(options.fileLog.dir, `dev-${sessionStamp}.log`);
   if (options.fileLog.enabled) { try { mkdirSync(dirname(logFilePath), { recursive: true }); } catch {} }
 
+  const mcpUrl = options.mcp.url ? options.mcp.url.replace(/\/$/, '') : '';
+
   server.middlewares.use(options.route, (req, res, next) => {
     if (req.method !== 'POST') return next();
     collectBody(req).then((raw) => {
@@ -87,7 +100,23 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
 
       if (!payload || !Array.isArray(payload.entries)) { res.statusCode = 400; res.end('invalid payload'); return; }
 
+      // Mirror to MCP server if configured
+      if (mcpUrl) {
+        try {
+          const target = `${mcpUrl}${options.mcp.routeLogs}`;
+          // do not await
+          fetch(target, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', ...options.mcp.headers },
+            body: JSON.stringify(payload),
+            keepalive: true,
+            cache: 'no-store'
+          }).catch(() => void 0);
+        } catch {}
+      }
+
       const logger = server.config.logger;
+      const shouldPrint = !(options.mcp.suppressTerminal && mcpUrl);
       const sid = (payload.sessionId ?? 'anon').slice(0, 8);
       for (const entry of payload.entries) {
         const level = normalizeLevel(entry.level);
@@ -97,9 +126,9 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
         let line = `${options.tag} [${sid}] ${level.toUpperCase()}: ${truncated}`;
         if (options.showSource && entry.source) line += ` (${entry.source})`;
         const colored = options.colors ? colorize(level, line) : line;
-        print(logger, level, colored);
+        if (shouldPrint) print(logger, level, colored);
 
-        if (entry.stack && options.stackMode !== 'none') {
+        if (entry.stack && options.stackMode !== 'none' && shouldPrint) {
           const lines = options.stackMode === 'full'
             ? indent(entry.stack, '    ')
             : `    ${(String(entry.stack).split(/\r?\n/g).find((l) => l.trim().length > 0) || '').trim()}`;

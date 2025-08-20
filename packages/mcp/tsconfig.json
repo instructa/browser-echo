@@ -8,7 +8,7 @@
     "target": "ES2022",
     "strict": true,
     "skipLibCheck": true,
-    "types": []
+    "types": ["node"]
   },
   "include": ["src"]
 }

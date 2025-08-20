@@ -4,11 +4,12 @@ MCP (Model Context Protocol) server for Browser Echo - captures and exposes fron
 
 ## Overview
 
-This package provides an MCP server that:
+This package provides an MCP server using Streamable HTTP transport that:
 - Captures frontend console logs (errors, warnings, info, debug)
 - Exposes logs through MCP tools and resources for AI assistants
 - Enables debugging of React hydration issues, network failures, and other frontend problems
 - Supports session-based filtering and soft/hard log clearing
+- Runs on HTTP transport for compatibility with browser-based log forwarding
 
 ## Installation
 
@@ -18,7 +19,19 @@ pnpm add -D @browser-echo/mcp
 
 ## Usage
 
-The MCP server is automatically started when using Browser Echo with supported frameworks (Vite, Next.js, Nuxt).
+Start the MCP server:
+
+```bash
+# Start on default port 5179
+pnpm --package=@browser-echo/mcp dlx browser-echo-mcp
+
+# Or with custom port
+pnpm --package=@browser-echo/mcp dlx browser-echo-mcp --port 8080
+```
+
+The server exposes:
+- MCP endpoint at `http://localhost:5179/mcp`
+- Log ingestion at `http://localhost:5179/__client-logs`
 
 ### Available Tools
 
@@ -116,8 +129,8 @@ The server also exposes logs as MCP resources:
 
 ### Environment Variables
 
-- `BROWSER_ECHO_MCP=0` - Disable MCP server (enabled by default in development)
-- `NODE_ENV=production` - MCP is automatically disabled in production
+- `BROWSER_ECHO_MCP_URL` - Override the default MCP server URL
+- `BROWSER_ECHO_BUFFER_SIZE` - Maximum log entries to keep in memory (default: 1000)
 
 ## API
 
@@ -155,7 +168,17 @@ publishLogEntry({
 
 ## Integration with AI Assistants
 
-The MCP server is designed to work seamlessly with AI assistants like Claude (via Cursor) or other MCP-compatible tools.
+The MCP server works with any MCP-compatible client. For Cursor, add to `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "browser-echo": {
+      "url": "http://localhost:5179/mcp"
+    }
+  }
+}
+```
 
 ### Natural Language Commands
 

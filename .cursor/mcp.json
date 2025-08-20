@@ -1,7 +1,8 @@
 {
   "mcpServers": {
     "browser-echo": {
-      "url": "http://localhost:5173/__mcp"
+      "type": "http",
+      "url": "http://localhost:5179/mcp"
     }
   }
 }

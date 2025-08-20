@@ -1,5 +1,9 @@
 import { defineEventHandler, readBody, setResponseStatus } from 'h3';
 
+const MCP_URL = (process.env.BROWSER_ECHO_MCP_URL || '').replace(/\/$/, '');
+const MCP_LOGS_ROUTE = process.env.BROWSER_ECHO_MCP_LOGS_ROUTE || '/__client-logs';
+const SUPPRESS_TERMINAL = MCP_URL && process.env.BROWSER_ECHO_SUPPRESS_TERMINAL !== '0';
+
 type Level = 'log' | 'info' | 'warn' | 'error' | 'debug';
 type Entry = { level: Level | string; text: string; time?: number; stack?: string; source?: string; };
 type Payload = { sessionId?: string; entries: Entry[] };
@@ -13,13 +17,28 @@ export default defineEventHandler(async (event) => {
     setResponseStatus(event, 400); return 'invalid payload';
   }
 
+  // Forward to MCP server if configured (fire-and-forget)
+  if (MCP_URL) {
+    try {
+      fetch(`${MCP_URL}${MCP_LOGS_ROUTE}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+        keepalive: true,
+        cache: 'no-store',
+      }).catch(() => void 0);
+    } catch {}
+  }
+
+  const shouldPrint = !SUPPRESS_TERMINAL;
+
   const sid = (payload.sessionId ?? 'anon').slice(0, 8);
   for (const entry of payload.entries) {
     const level = norm(entry.level);
     let line = `[browser] [${sid}] ${level.toUpperCase()}: ${entry.text}`;
     if (entry.source) line += ` (${entry.source})`;
-    print(level, color(level, line));
-    if (entry.stack) print(level, dim(indent(entry.stack, '    ')));
+    if (shouldPrint) print(level, color(level, line));
+    if (entry.stack && shouldPrint) print(level, dim(indent(entry.stack, '    ')));
   }
 
   setResponseStatus(event, 204);

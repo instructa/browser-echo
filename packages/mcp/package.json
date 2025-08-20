@@ -10,9 +10,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs"
-    }
+    },
+    "./cli": "./bin/cli.mjs"
+  },
+  "bin": {
+    "browser-echo-mcp": "./bin/cli.mjs"
   },
   "files": [
+    "bin",
     "dist"
   ],
   "sideEffects": false,
@@ -20,17 +25,20 @@
     "express": "^4 || ^5"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.17.2",
     "citty": "^0.1.6",
-    "zod": "^4.0.17"
+    "h3": "^1.13.0",
+    "zod": "^4.0.17",
+    "@modelcontextprotocol/sdk": "^1.17.2"
   },
   "devDependencies": {
     "typescript": "^5.9.2",
     "unbuild": "^3.6.1"
   },
   "scripts": {
-    "build": "unbuild",
+    "build": "unbuild && npm run chmod-run",
+    "chmod-run": "node -e \"fs.chmodSync('dist/index.mjs', '755'); if (require('fs').existsSync('dist/cli.mjs')) require('fs').chmodSync('dist/cli.mjs', '755');\"",
     "dev": "unbuild -w",
-    "clean": "rimraf dist || true"
+    "clean": "rm -rf dist || true",
+    "start": "node bin/cli.mjs"
   }
 }
