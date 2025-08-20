@@ -46,6 +46,9 @@ importers:
         specifier: 19.1.1
         version: 19.1.1(react@19.1.1)
     devDependencies:
+      '@browser-echo/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
       '@browser-echo/next':
         specifier: workspace:*
         version: link:../../packages/next
@@ -227,6 +230,9 @@ importers:
 
   packages/mcp:
     dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.17.2
+        version: 1.17.2
       citty:
         specifier: ^0.1.6
         version: 0.1.6
@@ -240,9 +246,6 @@ importers:
         specifier: ^4.0.17
         version: 4.0.17
     devDependencies:
-      '@modelcontextprotocol/sdk':
-        specifier: ^1.17.2
-        version: 1.17.2
       typescript:
         specifier: ^5.9.2
         version: 5.9.2

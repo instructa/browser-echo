@@ -14,6 +14,7 @@
     "react-dom": "19.1.1"
   },
   "devDependencies": {
+    "@browser-echo/mcp": "workspace:*",
     "@browser-echo/next": "workspace:*",
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4.1.12",

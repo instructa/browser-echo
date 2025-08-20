@@ -2,7 +2,9 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const ROUTE_CONTENT = `export { POST, runtime, dynamic } from '@browser-echo/next/route';
+const ROUTE_CONTENT = `import { POST as originalPOST, runtime, dynamic } from '@browser-echo/next/route';
+
+export { originalPOST as POST, runtime, dynamic };
 `;
 
 export function setup(projectRoot = process.cwd()) {

@@ -14,6 +14,6 @@ export default defineConfig({
     }),
     tanstackStart({ customViteReactPlugin: true }),
     viteReact(),
-    browserEcho({ injectHtml: false, stackMode: 'condensed' }),
+    browserEcho({ injectHtml: false, stackMode: 'condensed', mcp: { url: 'http://localhost:5179' } }),
   ],
 })

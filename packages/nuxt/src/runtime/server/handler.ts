@@ -17,10 +17,13 @@ export default defineEventHandler(async (event) => {
     setResponseStatus(event, 400); return 'invalid payload';
   }
 
-  // Forward to MCP server if configured (fire-and-forget)
-  if (MCP_URL) {
+  // Resolve MCP URL: env var first, otherwise discover in development
+  const mcpUrl = MCP_URL || (process.env.NODE_ENV === 'development' ? await __resolveMcpUrlNuxt() : '');
+
+  // Forward to MCP server if available (fire-and-forget)
+  if (mcpUrl) {
     try {
-      fetch(`${MCP_URL}${MCP_LOGS_ROUTE}`, {
+      fetch(`${mcpUrl}${MCP_LOGS_ROUTE}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
@@ -30,7 +33,8 @@ export default defineEventHandler(async (event) => {
     } catch {}
   }
 
-  const shouldPrint = !SUPPRESS_TERMINAL;
+  // Dynamically decide whether to print to terminal
+  const shouldPrint = !(mcpUrl && process.env.BROWSER_ECHO_SUPPRESS_TERMINAL !== '0');
 
   const sid = (payload.sessionId ?? 'anon').slice(0, 8);
   for (const entry of payload.entries) {
@@ -71,3 +75,69 @@ function color(level: Level, msg: string) {
   }
 }
 function dim(s: string) { return c.dim + s + c.reset; }
+
+let __mcpDiscoveryCacheNuxt: { url: string; ts: number } | null = null;
+
+async function __resolveMcpUrlNuxt(): Promise<string> {
+  const now = Date.now();
+  const CACHE_TTL_MS = 30_000;
+
+  if (__mcpDiscoveryCacheNuxt && (now - __mcpDiscoveryCacheNuxt.ts) < CACHE_TTL_MS) {
+    return __mcpDiscoveryCacheNuxt.url;
+  }
+
+  const fromFile = await __readDiscoveryUrlFromFileNuxt();
+  if (fromFile) {
+    __mcpDiscoveryCacheNuxt = { url: fromFile, ts: now };
+    return fromFile;
+  }
+
+  const ports = [5179, 5178, 3001, 4000, 5173];
+  for (const port of ports) {
+    const bases = [`http://127.0.0.1:${port}`, `http://localhost:${port}`];
+    for (const base of bases) {
+      if (await __pingHealthNuxt(`${base}/health`, 400)) {
+        __mcpDiscoveryCacheNuxt = { url: base, ts: now };
+        return base;
+      }
+    }
+  }
+
+  __mcpDiscoveryCacheNuxt = { url: '', ts: now };
+  return '';
+}
+
+async function __readDiscoveryUrlFromFileNuxt(): Promise<string> {
+  try {
+    const { readFileSync, existsSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+    const candidates = [
+      join(process.cwd(), '.browser-echo-mcp.json'),
+      join(tmpdir(), 'browser-echo-mcp.json')
+    ];
+    for (const p of candidates) {
+      try {
+        if (!existsSync(p)) continue;
+        const raw = readFileSync(p, 'utf-8');
+        const data = JSON.parse(raw);
+        const url = (data?.url ? String(data.url) : '').replace(/\/$/, '');
+        const ts = typeof data?.timestamp === 'number' ? data.timestamp : 0;
+        if (url && (Date.now() - ts) < 60_000) return url;
+      } catch {}
+    }
+  } catch {}
+  return '';
+}
+
+async function __pingHealthNuxt(url: string, timeoutMs: number): Promise<boolean> {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' as any });
+    clearTimeout(t);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}

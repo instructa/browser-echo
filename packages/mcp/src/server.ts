@@ -171,10 +171,41 @@ async function startHttpServer(mcp: McpServer, store: LogStore, opts: {
   } catch {}
 
   await new Promise<void>((resolve) => nodeServer.listen(opts.port, opts.host, () => resolve()));
+
+  // Advertise discovery so providers can auto-detect this server locally
+  await advertiseDiscovery(opts.host, opts.port, opts.logsRoute);
+
   // eslint-disable-next-line no-console
   console.log(`MCP (Streamable HTTP) listening → http://${opts.host}:${opts.port}${opts.endpoint}`);
   // eslint-disable-next-line no-console
   console.log(`Log ingest endpoint        → http://${opts.host}:${opts.port}${opts.logsRoute}`);
+}
+
+async function advertiseDiscovery(host: string, port: number, logsRoute: `/${string}`) {
+  try {
+    const { writeFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+
+    const baseUrl = `http://${host}:${port}`;
+    const payload = JSON.stringify({
+      url: baseUrl,
+      routeLogs: logsRoute,
+      timestamp: Date.now(),
+      pid: typeof process !== 'undefined' ? process.pid : undefined
+    });
+
+    const files = [
+      join(process.cwd(), '.browser-echo-mcp.json'),
+      join(tmpdir(), 'browser-echo-mcp.json')
+    ];
+
+    for (const f of files) {
+      try { writeFileSync(f, payload); } catch {}
+    }
+  } catch {
+    // best-effort only
+  }
 }
 
 /** Create log ingest routes that can be attached to any H3 app */
