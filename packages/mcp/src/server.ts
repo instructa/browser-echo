@@ -1,6 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { createServer as createNodeServer } from 'node:http'
-import { RestServerTransport } from '@chatmcp/sdk/server/rest.js'
 import { McpServer as Server } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
@@ -35,9 +34,8 @@ export async function startServer(
   if (options.type === 'http') {
     const port = options.port ?? 3000
     const endpoint = options.endpoint ?? '/mcp'
-    const transport = new RestServerTransport({ port, endpoint })
-    await server.connect(transport)
-    await transport.startServer()
+    // const transport = ... TODO: IMPLEMENT
+    // await server.connect(transport)
     console.log(`HTTP server listening → http://localhost:${port}${endpoint}`)
     return
   }

@@ -1,17 +1,15 @@
 import type { z } from 'zod'
-import type {
-  ErrorEnvelope,
-  FetchSuccess,
-  TProgressEvent,
-} from '../schemas/logs'
+// import type {
+  
+// } from '../schemas/logs'
 import type { McpToolContext } from '../types'
-import { FetchRequest } from '../schemas/deepwiki'
+// import { ... } from '../schemas/logs'
 
-export function deepwikiTool({ mcp }: McpToolContext) {
+export function getLogsTool({ mcp }: McpToolContext) {
   mcp.tool(
     'get_logs',
     'TODO:IMPLEMENT',
-    FetchRequest.shape,
+    // TODOIMPLEMENT.shape,
     async (input) => {
       // TODO: Implement
       // return {

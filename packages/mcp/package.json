@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.2",
+    "citty": "^0.1.6",
     "zod": "^4.0.17"
   },
   "devDependencies": {
