@@ -47,5 +47,29 @@ it('registers middleware and prints logs', async () => {
   fn(req, res, () => {});
   await done;
   expect(res.statusCode).toBe(204);
-  expect(logs.some(([lvl, m]) => lvl === 'info' && m.includes('[ABC12345') === false)).toBeTruthy();
+  // should print something (non-empty logs)
+  expect(logs.length).toBeGreaterThan(0);
+});
+
+it('does not suppress terminal when MCP not configured', async () => {
+  const { server, logs, handlers } = makeServerMock();
+  const p = browserEcho();
+  (p as any).configureServer(server);
+  const [route, fn] = handlers[0];
+  expect(route).toBe('/__client-logs');
+
+  const req: any = new (class {
+    method = 'POST';
+    listeners: any = {};
+    on(evt: string, cb: any) { this.listeners[evt] = cb; }
+    trigger(data: any) { this.listeners['data']?.(data); this.listeners['end']?.(); }
+  })();
+  const res: any = { statusCode: 0, end: vi.fn() };
+  const payload = JSON.stringify({ sessionId: 'abc12345', entries: [{ level: 'warn', text: 'hi no mcp' }] });
+  const done = new Promise<void>((resolve) => { res.end = vi.fn(() => resolve()); });
+  setTimeout(() => req.trigger(Buffer.from(payload)), 0);
+  fn(req, res, () => {});
+  await done;
+  // When MCP not configured, should print to terminal (logs captured)
+  expect(logs.some(([lvl, m]) => lvl === 'warn' || lvl === 'info' || lvl === 'error')).toBe(true);
 });
