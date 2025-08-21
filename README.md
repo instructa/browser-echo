@@ -16,6 +16,10 @@ No production impact. Providers enable this across frameworks by injecting a tin
 
 ## Quick start
 
+#### 1. Install Framework Package
+
+First, set up Browser Echo for your framework:
+
 | Framework | Quick Setup |
 | --- | --- |
 | TanStack / Vite | [Installation Guide](packages/vite/README.md#tanstack-start) |
@@ -29,6 +33,12 @@ No production impact. Providers enable this across frameworks by injecting a tin
 
 > Framework users only install their provider + `@browser-echo/core`. No cross‑framework bloat.
 
+#### 2. Use Browser Echo MCP (Optional)
+
+**⚠️ IMPORTANT:** You **must complete step 1** (framework setup) first before MCP will work. The MCP server needs your framework to forward browser logs to it.
+
+**📖 [Set up Browser Echo MCP Server](packages/mcp/README.md)** for AI assistant integration
+
 ## What you get
 
 - Drop‑in client patch that wraps `console.log/info/warn/error/debug`
@@ -39,7 +49,7 @@ No production impact. Providers enable this across frameworks by injecting a tin
 - Works great with AI assistants reading your terminal
 - **NEW:** MCP (Model Context Protocol) support for enhanced AI assistant integration
 
-## MCP Support for AI Assistants
+## Browser Echo MCP Server
 
 Browser Echo includes built-in MCP (Model Context Protocol) server support, enabling AI assistants like Claude (via Cursor) to interact with your frontend logs using natural language commands:
 
@@ -57,7 +67,20 @@ This integration makes debugging with AI assistants much more powerful - they ca
 
 **📖 [Full MCP Setup Guide & Documentation](packages/mcp/README.md)**
 
-## Options (shared shape)
+### MCP discovery and forwarding (Vite / Next / Nuxt)
+
+- By default, when an MCP server is detected, frameworks forward logs to MCP and **suppress local terminal output**. If MCP is not found, they log locally.
+- **Vite now auto‑discovers MCP** (no need to set `mcp.url`). It resolves in this order:
+  1. Explicit option/env: Vite plugin `mcp.url` or `BROWSER_ECHO_MCP_URL`
+  2. Discovery file written by the MCP server: `.browser-echo-mcp.json` (project root or OS tmp) containing `url` and `routeLogs`
+  3. Port scan of common local ports (127.0.0.1 / localhost)
+  4. Fallback to local terminal logging
+- **Terminal output control:**
+  - `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Force suppress terminal output (even when no MCP)
+  - `BROWSER_ECHO_SUPPRESS_TERMINAL=0` — Force show terminal output (even when MCP forwarding)
+  - Framework-specific options available (see individual framework package READMEs)
+
+## Options
 
 Most providers accept these options (names may appear as plugin options or component props):
 

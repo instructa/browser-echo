@@ -4,6 +4,13 @@ Nuxt 3/4 module for streaming browser console logs to your dev terminal.
 
 This Nuxt module registers a Nitro server route and a client plugin (dev-only) with zero manual wiring beyond adding the module to your configuration.
 
+## Table of Contents
+
+- [Installation](#installation)
+- [Setup](#setup)
+- [Configuration Options](#configuration-options)
+- [Install MCP Server](#install-mcp-server)
+
 ## Features
 
 - Zero-config Nuxt 3/4 module
@@ -85,6 +92,38 @@ export default defineNuxtConfig({
     batch: { 
       size: 10,    // Send after 10 logs
       interval: 500 // Or after 500ms
+    }
+  }
+});
+```
+
+## Install MCP Server
+
+Nuxt automatically discovers and forwards logs to MCP servers. No configuration needed in most cases!
+
+**📖 [First, set up the MCP server](../mcp/README.md#installation) for your AI assistant, then configure framework options below.**
+
+### Auto-Discovery (Default)
+
+The Nuxt server handler automatically detects MCP servers and forwards logs when available. When MCP is detected, terminal output is suppressed by default.
+
+### Environment Variables
+
+- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Set MCP server URL
+- `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Force suppress terminal output
+- `BROWSER_ECHO_SUPPRESS_TERMINAL=0` — Force show terminal output even when MCP is active
+
+### Disable MCP Discovery
+
+```ts
+// nuxt.config.ts
+export default defineNuxtConfig({
+  modules: ['@browser-echo/nuxt'],
+  
+  // Disable MCP discovery via environment
+  runtimeConfig: {
+    browserEcho: {
+      disableMcp: true // Custom flag to disable MCP in your handler
     }
   }
 });

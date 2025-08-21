@@ -6,6 +6,13 @@ Vue plugin for streaming browser console logs to your dev terminal (non-Vite set
 
 This package provides a Vue plugin helper for non-Vite environments. If you're using Vite, prefer [@browser-echo/vite](../vite/README.md#vue--vite) which includes the dev middleware automatically.
 
+## Table of Contents
+
+- [Installation](#installation)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Install MCP Server](#install-mcp-server)
+
 ## Features
 
 - Vue 3 plugin integration
@@ -172,6 +179,21 @@ export default defineConfig({
   plugins: [vue(), browserEcho()],
 });
 ```
+
+## Install MCP Server
+
+For Vue (non-Vite) apps, MCP forwarding depends on your server-side route implementation. The Vue provider only handles browser-side log collection.
+
+**📖 [First, set up the MCP server](../mcp/README.md#installation) for your AI assistant, then configure framework options below.**
+
+### Environment Variables
+
+- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Set in your server environment  
+- `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Control terminal output in your route handler
+
+### Server Route MCP Integration
+
+See the [React MCP Settings](../react/README.md#mcp-settings) for an example server route with MCP forwarding.
 
 ## Dependencies
 

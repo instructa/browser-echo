@@ -4,6 +4,14 @@ Next.js App Router integration for streaming browser console logs to your dev te
 
 Since Turbopack doesn't use Vite, this package provides a tiny route handler and an early script component to patch `console.*` methods and forward logs to your development server.
 
+## Table of Contents
+
+- [Installation](#installation)
+- [Quick Setup](#quick-setup-recommended)
+- [Manual Setup](#manual-setup)
+- [Available Options](#available-options)
+- [Install MCP Server](#install-mcp-server)
+
 ## Features
 
 - Next.js App Router compatible
@@ -175,6 +183,46 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 ```ts
 // app/api/client-logs/route.ts
 export { POST, runtime, dynamic } from '@browser-echo/next/route';
+```
+
+## Install MCP Server
+
+Next.js automatically discovers and forwards logs to MCP servers. No configuration needed in most cases!
+
+**📖 [First, set up the MCP server](../mcp/README.md#installation) for your AI assistant, then configure framework options below.**
+
+### Auto-Discovery (Default)
+
+The Next.js route handler automatically detects MCP servers and forwards logs when available. When MCP is detected, terminal output is suppressed by default.
+
+### Environment Variables
+
+- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Set MCP server URL
+- `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Force suppress terminal output
+- `BROWSER_ECHO_SUPPRESS_TERMINAL=0` — Force show terminal output even when MCP is active
+
+### Disable MCP Discovery
+
+```ts
+// app/api/client-logs/route.ts
+import { POST as BasePost } from '@browser-echo/next/route';
+
+// Custom handler without MCP discovery
+export async function POST(request: NextRequest) {
+  // Set environment to disable MCP
+  const originalMcpUrl = process.env.BROWSER_ECHO_MCP_URL;
+  delete process.env.BROWSER_ECHO_MCP_URL;
+  
+  const result = await BasePost(request);
+  
+  // Restore original env
+  if (originalMcpUrl) process.env.BROWSER_ECHO_MCP_URL = originalMcpUrl;
+  
+  return result;
+}
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 ```
 
 ## How it works

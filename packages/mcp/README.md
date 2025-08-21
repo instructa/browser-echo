@@ -15,9 +15,34 @@ Your AI assistant will automatically use the appropriate MCP tools to fetch and 
 
 ---
 
-## Installation for AI Assistants
+## Installation
 
-### Cursor IDE
+**⚠️ PREREQUISITE:** Before setting up the MCP server, you **must first install and configure a Browser Echo framework package** (Vite, Next.js, Nuxt, etc.) in your project. The MCP server needs your framework to forward browser logs to it.
+
+**📖 [Choose your framework and complete setup first](../README.md#quick-start)**
+
+Once your framework is set up and forwarding logs, install the Browser Echo MCP server with your client. Using stdio transport.
+
+**Standard config** works in most of the tools:
+
+
+```json
+{
+  "mcpServers": {
+    "browser-echo": {
+      "command": "npx",
+      "args": ["-y","@browser-echo/mcp"]
+    }
+  }
+}
+```
+
+### Cursor
+
+[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=browser-echo&config=eyJjb21tYW5kIjoibnB4IC15IEBicm93c2VyLWVjaG8vbWNwIn0%3D)
+
+<details>
+<summary>Manual Install</summary>
 
 Add to your `.cursor/mcp.json`:
 
@@ -26,42 +51,85 @@ Add to your `.cursor/mcp.json`:
   "mcpServers": {
     "browser-echo": {
       "command": "npx",
-      "args": ["@browser-echo/mcp"]
+      "args": ["-y","@browser-echo/mcp"]
     }
   }
 }
 ```
+</details>
 
-### Claude Desktop
+### Claude Code
 
 Add to your Claude Desktop MCP config:
 
 ```json
+claude mcp add browser-echo-mcp npx -y @browser-echo/mcp
+```
+
+
+<details>
+<summary>Claude Desktop</summary>
+
+Follow the MCP install [guide](https://modelcontextprotocol.io/quickstart/user), use the standard config above.
+</details>
+
+<details>
+<summary>Gemini CLI</summary>
+
+Follow the MCP install [guide](https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md#configure-the-mcp-server-in-settingsjson), use the standard config above.
+</details>
+
+<details>
+<summary>opencode</summary>
+
+Follow the MCP Servers [documentation](https://opencode.ai/docs/mcp-servers/). For example in `~/.config/opencode/opencode.json`:
+
+```json
 {
-  "mcpServers": {
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
     "browser-echo": {
-      "command": "npx",
-      "args": ["@browser-echo/mcp"]
+      "type": "local",
+      "command": [
+        "npx",
+        "@browser-echo/mcp"
+      ],
+      "enabled": true
     }
   }
 }
+
 ```
+</details>
 
----
+<details>
+<summary>VS Code</summary>
 
-## Streamable HTTP Setup
+#### Click the button to install:
 
-If you prefer HTTP transport over stdio (useful for web-based AI tools):
+#### Or install manually:
 
-### 1. Install the package
+Follow the MCP install [guide](https://code.visualstudio.com/docs/copilot/chat/mcp-servers#_add-an-mcp-server), use the standard config above. You can also install the Playwright MCP server using the VS Code CLI:
 
 ```bash
-npm install -g @browser-echo/mcp
-# or
-pnpm add -g @browser-echo/mcp
+# For VS Code
+code --add-mcp '{"name":"browser-echo","command":"npx","args":["@browser-echo/mcp@latest"]}'
 ```
 
-### 2. Start the HTTP server
+After installation, the Playwright MCP server will be available for use with your GitHub Copilot agent in VS Code.
+</details>
+
+<details>
+<summary>Windsurf</summary>
+
+Follow Windsurf MCP [documentation](https://docs.windsurf.com/windsurf/cascade/mcp). Use the standard config above.
+
+</details>
+
+
+### Streamable HTTP Setup (Server usage)
+
+If you prefer HTTP transport (useful for web-based AI tools):
 
 ```bash
 # Start with full HTTP transport
@@ -71,9 +139,34 @@ npx @browser-echo/mcp --http
 npx @browser-echo/mcp --http --host 127.0.0.1 --port 5179
 ```
 
-### 3. Configure your AI assistant
-
 Point your MCP client to: `http://127.0.0.1:5179/mcp`
+
+```json
+{
+  "mcpServers": {
+    "browser-echo": {
+      "url": "http://localhost:5179/mcp"
+    }
+  }
+}
+```
+
+---
+
+## Framework Options
+
+Each framework package supports MCP configuration options:
+
+| Framework | Install MCP Server |
+| --- | --- |
+| TanStack / Vite | [Install MCP Server](../vite/README.md#install-mcp-server) |
+| Nuxt 3/4 | [Install MCP Server](../nuxt/README.md#install-mcp-server) |
+| Next.js (App Router) | [Install MCP Server](../next/README.md#install-mcp-server) |
+| Vue + Vite | [Install MCP Server](../vite/README.md#install-mcp-server) |
+| React + Vite | [Install MCP Server](../vite/README.md#install-mcp-server) |
+| Vue (non-Vite) | [Install MCP Server](../vue/README.md#install-mcp-server) |
+| React (non-Vite) | [Install MCP Server](../react/README.md#install-mcp-server) |
+| Core | [Install MCP Server](../core/README.md#install-mcp-server) |
 
 ---
 

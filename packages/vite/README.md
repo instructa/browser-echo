@@ -10,6 +10,7 @@ This package provides a Vite plugin that includes dev middleware and a virtual m
 - [React + Vite](#react--vite)
 - [TanStack Start](#tanstack-start)
 - [Configuration Options](#configuration-options)
+- [Install MCP Server](#install-mcp-server)
 
 ## Features
 
@@ -131,8 +132,59 @@ interface BrowserEchoViteOptions {
   batch?: { size?: number; interval?: number }; // default: 20 / 300ms
   truncate?: number;                 // default: 10_000 chars
   fileLog?: { enabled?: boolean; dir?: string }; // default: disabled
+  mcp?: { 
+    url?: string;                    // MCP server base URL (auto-discovered if not set)
+    routeLogs?: `/${string}`;        // MCP logs route (default: '/__client-logs')
+    suppressTerminal?: boolean;      // Suppress terminal output when forwarding (default: auto)
+    headers?: Record<string,string>; // Custom headers for MCP requests
+  };
+  discoverMcp?: boolean;             // Enable MCP auto-discovery (default: true)
+  discoveryRefreshMs?: number;       // Discovery refresh interval (default: 30000)
+  discoveryPorts?: number[];         // Ports to scan for MCP (default: [5179, 5178, 3001, 4000, 5173])
 }
 ```
+
+## Install MCP Server
+
+The Vite plugin automatically discovers and forwards logs to MCP servers. No configuration needed in most cases!
+
+**📖 [First, set up the MCP server](../mcp/README.md#installation) for your AI assistant, then configure framework options below.**
+
+### Auto-Discovery (Default)
+
+```ts
+browserEcho({
+  // MCP auto-discovery enabled by default
+  // Logs forward to MCP when detected, terminal output suppressed
+})
+```
+
+### Manual Configuration
+
+```ts
+browserEcho({
+  mcp: {
+    url: 'http://127.0.0.1:5179',           // Explicit MCP base URL
+    suppressTerminal: false,                 // Keep terminal output even when forwarding
+    headers: { 'Authorization': 'Bearer ...' } // Custom headers if needed
+  }
+})
+```
+
+### Disable MCP
+
+```ts
+browserEcho({
+  discoverMcp: false,  // Disable auto-discovery
+  mcp: { url: '' }     // Disable explicit MCP
+})
+```
+
+### Environment Variables
+
+- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Set MCP server URL
+- `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Force suppress terminal output
+- `BROWSER_ECHO_SUPPRESS_TERMINAL=0` — Force show terminal output
 
 ## File Logging (Vite-only feature)
 
