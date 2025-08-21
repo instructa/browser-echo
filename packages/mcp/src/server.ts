@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { createApp, createRouter, defineEventHandler, getQuery, readRawBody, setResponseStatus, toNodeListener } from 'h3';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
 import { LogStore, normalizeLevel, type BrowserLogLevel } from './store';
 import { registerTools } from './tools';
@@ -23,17 +24,27 @@ interface HttpOptions {
   logsRoute: `/${string}`;
 }
 
-export type StartOptions = HttpOptions;
+interface StdioOptions {
+  type: 'stdio';
+  /** Optional ingest host (default 127.0.0.1) */
+  host?: string;
+  /** Optional ingest port (default 5179) */
+  port?: number;
+  /** Optional ingest route (default /__client-logs) */
+  logsRoute?: `/${string}`;
+}
+
+export type StartOptions = HttpOptions | StdioOptions;
 
 /**
- * Starts the given MCP server with HTTP transport.
+ * Starts the given MCP server with the selected transport.
+ * - `http`: full Streamable HTTP (MCP endpoint + ingest).
+ * - `stdio`: MCP over stdio + **ingest-only HTTP** so browsers/frameworks can POST logs.
  */
 export async function startServer(
   server: McpServer,
   options: StartOptions,
 ): Promise<void> {
-  const { port, host, endpoint, logsRoute } = options;
-
   // Create store
   const bufferMax = Number(process.env.BROWSER_ECHO_BUFFER_SIZE ?? 1000) | 0;
   const store = new LogStore(bufferMax > 0 ? bufferMax : 1000);
@@ -43,7 +54,24 @@ export async function startServer(
   registerTools(context);
   registerResources(context);
 
-  // Start HTTP server
+  if (options.type === 'stdio') {
+    // Connect MCP over stdio
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+
+    // Always bring up an ingest-only HTTP endpoint so clients/frameworks can POST logs
+    const host = options.host || '127.0.0.1';
+    const port = (options.port ?? 5179) | 0;
+    const logsRoute = options.logsRoute || '/__client-logs';
+    await startIngestOnlyServer(store, { host, port, logsRoute });
+
+    // eslint-disable-next-line no-console
+    console.log('MCP (stdio) listening on stdio (ingest HTTP active)');
+    return;
+  }
+
+  // Streamable HTTP (MCP endpoint + ingest)
+  const { port, host, endpoint, logsRoute } = options;
   await startHttpServer(server, store, { host, port, endpoint, logsRoute });
 }
 
@@ -59,13 +87,15 @@ export async function stopServer(server: McpServer) {
   }
 }
 
-/** Start a standalone H3 HTTP server exposing:
- *  - MCP endpoint (POST for requests, GET for SSE) at {endpoint}
+/** Start a Streamable HTTP server exposing:
+ *  - MCP endpoint (POST/GET/DELETE) at {endpoint}
  *  - Log ingest/diagnostics at {logsRoute} (POST to append, GET to view)
  */
-async function startHttpServer(mcp: McpServer, store: LogStore, opts: {
-  host: string; port: number; endpoint: `/${string}`; logsRoute: `/${string}`;
-}): Promise<void> {
+export async function startHttpServer(
+  mcp: McpServer,
+  store: LogStore,
+  opts: { host: string; port: number; endpoint: `/${string}`; logsRoute: `/${string}` }
+): Promise<void> {
   const app = createApp();
   const router = createRouter();
 
@@ -177,6 +207,49 @@ async function startHttpServer(mcp: McpServer, store: LogStore, opts: {
 
   // eslint-disable-next-line no-console
   console.log(`MCP (Streamable HTTP) listening → http://${opts.host}:${opts.port}${opts.endpoint}`);
+  // eslint-disable-next-line no-console
+  console.log(`Log ingest endpoint        → http://${opts.host}:${opts.port}${opts.logsRoute}`);
+}
+
+/** Start a minimal HTTP server exposing ONLY:
+ *  - Log ingest/diagnostics at {logsRoute} (POST to append, GET to view)
+ *  - /health (GET)
+ * This is used when MCP transport is stdio.
+ */
+export async function startIngestOnlyServer(
+  store: LogStore,
+  opts: { host: string; port: number; logsRoute: `/${string}` }
+): Promise<void> {
+  const app = createApp();
+  const router = createRouter();
+
+  // Attach log ingest routes
+  app.use(createLogIngestRoutes(store, opts.logsRoute));
+
+  // Health
+  router.get('/health', defineEventHandler(() => 'ok'));
+
+  app.use(router);
+
+  const nodeServer = createNodeServer(toNodeListener(app));
+
+  try {
+    nodeServer.requestTimeout = 0;
+    nodeServer.headersTimeout = 0;
+    typeof nodeServer.setTimeout === 'function' && nodeServer.setTimeout(0);
+    nodeServer.on('connection', (socket: any) => {
+      try {
+        socket.setKeepAlive?.(true, 60_000);
+        socket.setNoDelay?.(true);
+      } catch {}
+    });
+  } catch {}
+
+  await new Promise<void>((resolve) => nodeServer.listen(opts.port, opts.host, () => resolve()));
+
+  // Advertise discovery for tooling that wants to auto-detect the ingest endpoint
+  await advertiseDiscovery(opts.host, opts.port, opts.logsRoute);
+
   // eslint-disable-next-line no-console
   console.log(`Log ingest endpoint        → http://${opts.host}:${opts.port}${opts.logsRoute}`);
 }

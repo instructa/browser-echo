@@ -1,160 +1,291 @@
 # @browser-echo/mcp
 
-MCP (Model Context Protocol) server for Browser Echo - captures and exposes frontend browser console logs to AI assistants.
+MCP (Model Context Protocol) server for Browser Echo — enables AI assistants to directly access and analyze your frontend browser console logs using natural language commands.
 
-## Overview
+## Example Usage
 
-This package provides an MCP server using Streamable HTTP transport that:
-- Captures frontend console logs (errors, warnings, info, debug)
-- Exposes logs through MCP tools and resources for AI assistants
-- Enables debugging of React hydration issues, network failures, and other frontend problems
-- Supports session-based filtering and soft/hard log clearing
-- Runs on HTTP transport for compatibility with browser-based log forwarding
+Ask your AI assistant questions like:
 
-## Installation
+- **"Check frontend logs"** — Get recent console logs from your browser
+- **"Show only errors from the last 2 minutes"** — Filter by level and time  
+- **"Find hydration mismatch warnings"** — Search for specific issues
+- **"Clear logs and start fresh"** — Reset the buffer for new captures
 
-```bash
-pnpm add -D @browser-echo/mcp
+Your AI assistant will automatically use the appropriate MCP tools to fetch and analyze the logs without you needing to copy/paste from terminals.
+
+---
+
+## Installation for AI Assistants
+
+### Cursor IDE
+
+Add to your `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "browser-echo": {
+      "command": "npx",
+      "args": ["@browser-echo/mcp"]
+    }
+  }
+}
 ```
 
-## Usage
+### Claude Desktop
 
-Start the MCP server:
+Add to your Claude Desktop MCP config:
 
-```bash
-# Start on default port 5179
-pnpm --package=@browser-echo/mcp dlx browser-echo-mcp
-
-# Or with custom port
-pnpm --package=@browser-echo/mcp dlx browser-echo-mcp --port 8080
+```json
+{
+  "mcpServers": {
+    "browser-echo": {
+      "command": "npx",
+      "args": ["@browser-echo/mcp"]
+    }
+  }
+}
 ```
 
-The server exposes:
-- MCP endpoint at `http://localhost:5179/mcp`
-- Log ingestion at `http://localhost:5179/__client-logs`
+---
 
-### Available Tools
+## Streamable HTTP Setup
 
-#### `get_logs` - Fetch Frontend Browser Logs
+If you prefer HTTP transport over stdio (useful for web-based AI tools):
 
-The primary tool for retrieving console logs. Supports extensive filtering options:
+### 1. Install the package
+
+```bash
+npm install -g @browser-echo/mcp
+# or
+pnpm add -g @browser-echo/mcp
+```
+
+### 2. Start the HTTP server
+
+```bash
+# Start with full HTTP transport
+npx @browser-echo/mcp --http
+
+# Custom host/port
+npx @browser-echo/mcp --http --host 127.0.0.1 --port 5179
+```
+
+### 3. Configure your AI assistant
+
+Point your MCP client to: `http://127.0.0.1:5179/mcp`
+
+---
+
+## Available Tools
+
+### `get_logs` — Fetch Frontend Browser Logs
+
+Retrieve console logs with extensive filtering options:
 
 ```typescript
-// Example: Get all logs
+// Get all logs
 get_logs()
 
-// Example: Get only errors and warnings
+// Filter by log levels
 get_logs({ level: ['error', 'warn'] })
 
-// Example: Get logs from specific session
+// Filter by session (8-character session ID)
 get_logs({ session: 'abc12345' })
 
-// Example: Get logs containing "hydration"
+// Search for specific content
 get_logs({ contains: 'hydration' })
 
-// Example: Get logs from last 5 minutes
+// Get logs from last 5 minutes
 get_logs({ sinceMs: Date.now() - 300000 })
 
-// Example: Get last 10 errors without stack traces
-get_logs({ 
-  level: ['error'], 
-  limit: 10, 
-  includeStack: false 
-})
+// Limit results and exclude stack traces
+get_logs({ level: ['error'], limit: 10, includeStack: false })
 ```
 
 **Parameters:**
-- `level`: Filter by log levels (`['log', 'info', 'warn', 'error', 'debug']`)
-- `session`: 8-character session ID prefix
-- `includeStack`: Include stack traces (default: true)
-- `limit`: Maximum entries to return (default: 1000, max: 5000)
-- `contains`: Filter by substring in log text
-- `sinceMs`: Only logs with timestamp >= sinceMs
+- `level?: string[]` — Filter by log levels: `['log', 'info', 'warn', 'error', 'debug']`
+- `session?: string` — 8-character session ID prefix to filter by specific browser tab
+- `includeStack?: boolean` — Include stack traces (default: `false`)
+- `limit?: number` — Maximum entries to return (default: `1000`, max: `5000`)
+- `contains?: string` — Filter by substring in log text
+- `sinceMs?: number` — Only logs with timestamp >= sinceMs
 
-**Returns:** Both text format (for display) and JSON format (for processing)
+**Returns:** Formatted text suitable for AI analysis + structured JSON data
 
-#### `clear_logs` - Clear Frontend Browser Logs
+### `clear_logs` — Clear Frontend Browser Logs
 
-Clears the log buffer for fresh captures. Supports soft clearing (baseline) and session-specific clearing:
+Reset the log buffer for fresh captures:
 
 ```typescript
-// Example: Clear all logs (hard clear)
+// Hard clear - delete all logs
 clear_logs()
 
-// Example: Set baseline marker (soft clear) - old logs hidden but not deleted
+// Soft clear - set baseline (hide old logs but keep in memory)
 clear_logs({ scope: 'soft' })
 
-// Example: Clear only specific session
+// Clear logs for specific session
 clear_logs({ session: 'abc12345', scope: 'hard' })
-
-// Example: Set baseline for specific session
 clear_logs({ session: 'abc12345', scope: 'soft' })
 ```
 
 **Parameters:**
-- `session`: 8-character session ID prefix (optional)
-- `scope`: `'soft'` (set baseline) or `'hard'` (delete entries, default)
+- `session?: string` — 8-character session ID prefix (optional)
+- `scope?: 'soft' | 'hard'` — `'soft'` sets baseline, `'hard'` deletes entries (default: `'hard'`)
 
-### Resources
+---
 
-The server also exposes logs as MCP resources:
-- `browser-echo://logs` - All console logs
-- `browser-echo://logs/{session}` - Logs for specific session
+## Available Resources
 
-### Common Workflows
+- `browser-echo://logs` — All console logs as MCP resource
+- `browser-echo://logs/{session}` — Logs for specific session as MCP resource
 
-#### Debug Hydration Errors
-```
-1. User: "Clear logs and let me reproduce the hydration error"
-   → clear_logs()
-2. User reproduces the issue
-3. User: "Check for hydration errors"
-   → get_logs({ level: ['error', 'warn'], contains: 'hydration' })
-```
+---
 
-#### Monitor Specific Session
-```
-1. User: "Show me all sessions"
-   → get_logs() (check unique session IDs)
-2. User: "Focus on session starting with 'a1b2'"
-   → get_logs({ session: 'a1b2' })
-```
+## CLI Reference
 
-#### Fresh Capture for Testing
-```
-1. clear_logs({ scope: 'soft' })  // Set baseline
-2. Run tests
-3. get_logs({ level: ['error', 'warn'] })  // Only new errors
+### Transport Selection
+
+By default, the server uses **stdio transport** (best for local AI assistants). It automatically switches to **HTTP transport** when you specify non-default network options.
+
+```bash
+# Default: stdio transport + HTTP ingest endpoint
+npx @browser-echo/mcp
+
+# Force HTTP transport
+npx @browser-echo/mcp --http
+
+# Auto-switch to HTTP (when non-default options provided)
+npx @browser-echo/mcp --port 8080        # → HTTP mode
+npx @browser-echo/mcp --host 0.0.0.0     # → HTTP mode
 ```
 
-### Environment Variables
+### CLI Flags
 
-- `BROWSER_ECHO_MCP_URL` - Override the default MCP server URL
-- `BROWSER_ECHO_BUFFER_SIZE` - Maximum log entries to keep in memory (default: 1000)
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--http` | `false` | Force Streamable HTTP transport instead of stdio |
+| `--host` | `127.0.0.1` | Host for ingest server (stdio) or full server (HTTP) |
+| `--port` | `5179` | Port for ingest server (stdio) or full server (HTTP) |
+| `--logsRoute` | `/__client-logs` | Path for the logs ingest route |
+| `--endpoint` | `/mcp` | MCP endpoint path (only used with `--http`) |
+| `--buffer` | `1000` | Max in-memory entries kept by the ring buffer |
 
-## API
+**Cross-platform:** Works on macOS, Linux, and Windows. No native dependencies.
 
-### `startMcpServer(options?)`
+---
 
-Start the MCP server (called automatically by framework integrations).
+## Development Usage
+
+### Stdio Mode (Default)
+
+Best for local development with AI assistants:
+
+```json
+// .cursor/mcp.json
+{
+  "mcpServers": {
+    "browser-echo": {
+      "command": "node",
+      "args": ["packages/mcp/bin/cli.mjs"]
+    }
+  }
+}
+```
+
+In stdio mode:
+- MCP communication happens over **stdio** (no HTTP MCP endpoint)
+- An **HTTP ingest server** runs at `http://127.0.0.1:5179/__client-logs` for browsers to POST logs
+- Console output: `MCP (stdio) listening on stdio (ingest HTTP active)`
+
+### HTTP Mode
+
+For web-based AI tools or when you need HTTP MCP access:
+
+```json
+// .cursor/mcp.json  
+{
+  "mcpServers": {
+    "browser-echo": {
+      "command": "node", 
+      "args": ["packages/mcp/bin/cli.mjs", "--http"]
+    }
+  }
+}
+```
+
+In HTTP mode:
+- Full **Streamable HTTP** MCP endpoint at `http://127.0.0.1:5179/mcp`
+- HTTP ingest endpoint at `http://127.0.0.1:5179/__client-logs`
+- Console output: `MCP (Streamable HTTP) listening → http://127.0.0.1:5179/mcp`
+
+### Custom Configuration
+
+```bash
+# Custom ingest port in stdio mode
+node packages/mcp/bin/cli.mjs --port 8081
+
+# Custom HTTP server  
+node packages/mcp/bin/cli.mjs --http --host 0.0.0.0 --port 5179
+```
+
+---
+
+## How Logs Reach the Server
+
+### Browser → Ingest (Recommended)
+
+Your framework packages automatically send logs to the ingest endpoint:
 
 ```typescript
-import { startMcpServer } from '@browser-echo/mcp';
+// Browser automatically POSTs to ingest endpoint
+POST http://127.0.0.1:5179/__client-logs
+{
+  "sessionId": "tab-123",
+  "entries": [
+    { 
+      "level": "error", 
+      "text": "Failed to fetch user", 
+      "time": 1724200000000, 
+      "source": "api.ts:42", 
+      "stack": "Error: ..." 
+    }
+  ]
+}
+```
 
-startMcpServer({
+### Framework Forwarding
+
+Framework packages (Next.js, Nuxt, etc.) can forward logs to the MCP server:
+
+```bash
+# Set this in your app's environment
+export BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp
+```
+
+When set, framework handlers automatically forward browser logs to the MCP ingest endpoint.
+
+---
+
+## Programmatic API
+
+Start the MCP server programmatically in your Node.js application:
+
+```typescript
+import { startMcpServer, publishLogEntry } from '@browser-echo/mcp';
+
+// Start HTTP MCP server in-process
+await startMcpServer({
   name: 'My App Logs',
   version: '1.0.0',
-  bufferSize: 2000  // Max entries in memory
+  bufferSize: 2000,
+  host: '127.0.0.1',
+  port: 5179,
+  endpoint: '/mcp',
+  logsRoute: '/__client-logs'
 });
-```
 
-### `publishLogEntry(entry)`
-
-Publish a log entry to the MCP server.
-
-```typescript
-import { publishLogEntry } from '@browser-echo/mcp';
-
+// Publish log entries programmatically
 publishLogEntry({
   sessionId: 'user-123',
   level: 'error',
@@ -166,51 +297,53 @@ publishLogEntry({
 });
 ```
 
-## Integration with AI Assistants
+> **Note:** If `BROWSER_ECHO_MCP_URL` is set, `startMcpServer()` becomes a no-op to avoid duplicate servers.
 
-The MCP server works with any MCP-compatible client. For Cursor, add to `.cursor/mcp.json`:
+---
 
-```json
-{
-  "mcpServers": {
-    "browser-echo": {
-      "url": "http://localhost:5179/mcp"
-    }
-  }
-}
+## Environment Variables
+
+- `BROWSER_ECHO_BUFFER_SIZE` — Max entries in memory (default: `1000`)
+- `BROWSER_ECHO_MCP_URL` — MCP server URL for framework forwarding (e.g., `http://127.0.0.1:5179/mcp`)
+
+---
+
+## Common Workflows
+
+### Debug Hydration Errors
+```
+1. User: "Clear logs and let me reproduce the hydration error"
+   → clear_logs({ scope: 'soft' })
+2. User reproduces the issue in browser
+3. User: "Check for hydration errors"  
+   → get_logs({ level: ['error', 'warn'], contains: 'hydration' })
 ```
 
-### Natural Language Commands
+### Monitor Specific Browser Tab
+```
+1. User: "Show me all active sessions"
+   → get_logs() // Look for unique session IDs
+2. User: "Focus on session starting with 'a1b2'"
+   → get_logs({ session: 'a1b2' })
+```
 
-Users can interact with logs using natural language:
-- "Check frontend logs"
-- "Show only errors from the last 2 minutes"
-- "Find hydration mismatch warnings"
-- "Clear logs and start fresh"
-- "Focus on my current tab's logs"
+### Fresh Error Capture
+```
+1. clear_logs({ scope: 'soft' })  // Set baseline
+2. Run tests or reproduce issue
+3. get_logs({ level: ['error', 'warn'] })  // Only new errors
+```
 
-The AI assistant will automatically use the appropriate tools with the right parameters.
+---
 
-## Advanced Features
+## Security
 
-### Soft vs Hard Clear
+**Local Development Defaults:**
+- CORS headers are permissive (`Access-Control-Allow-Origin: *`) 
+- Binds to `127.0.0.1` by default for local-only access
+- When exposing over network, add authentication/proxy as needed
 
-- **Soft Clear**: Sets a baseline timestamp. Old logs are hidden but remain in memory. Useful for focusing on new logs without losing history.
-- **Hard Clear**: Completely removes logs from memory. Use when you need a truly fresh start.
-
-### Session Management
-
-Each browser tab/session gets a unique ID. You can:
-- Filter logs by session to focus on specific user interactions
-- Clear logs for individual sessions
-- Track issues across multiple browser tabs
-
-### Performance
-
-- Logs are stored in a ring buffer (default 1000 entries)
-- Old entries are automatically removed when buffer is full
-- Minimal overhead on your application
-- File logging remains separate and unaffected
+---
 
 ## License
 

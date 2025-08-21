@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "browser-echo": {
-      "type": "http",
-      "url": "http://localhost:5179/mcp"
+      "command": "node",
+      "args": ["packages/mcp/bin/cli.mjs"]
     }
   }
 }

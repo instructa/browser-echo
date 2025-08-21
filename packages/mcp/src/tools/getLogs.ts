@@ -15,7 +15,7 @@ export function registerGetLogsTool(ctx: McpToolContext) {
       const {
         level,
         session,
-        includeStack = true,
+        includeStack = false,
         limit = 1000,
         contains,
         sinceMs

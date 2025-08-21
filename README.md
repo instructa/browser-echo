@@ -41,7 +41,7 @@ No production impact. Providers enable this across frameworks by injecting a tin
 
 ## MCP Support for AI Assistants
 
-Browser Echo now includes built-in MCP server support, enabling AI assistants like Claude (via Cursor) to interact with your frontend logs using natural language commands:
+Browser Echo includes built-in MCP (Model Context Protocol) server support, enabling AI assistants like Claude (via Cursor) to interact with your frontend logs using natural language commands:
 
 - **"Check frontend logs"** - Retrieves recent console logs
 - **"Show only errors from the last 2 minutes"** - Filters by level and time
@@ -54,6 +54,8 @@ The MCP server exposes two main tools:
 - `clear_logs` - Clear logs with soft/hard modes and session-specific clearing
 
 This integration makes debugging with AI assistants much more powerful - they can directly query and analyze your frontend logs without you having to copy/paste from the terminal.
+
+**📖 [Full MCP Setup Guide & Documentation](packages/mcp/README.md)**
 
 ## Options (shared shape)
 

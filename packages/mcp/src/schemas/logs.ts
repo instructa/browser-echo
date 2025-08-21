@@ -4,7 +4,7 @@ import { z } from 'zod';
 export const GetLogsArgs = {
   level: z.array(z.enum(['log','info','warn','error','debug'])).optional().describe('Filter by log levels'),
   session: z.string().optional().describe('8-char session id prefix'),
-  includeStack: z.boolean().optional().default(true).describe('Include stack traces in text view'),
+  includeStack: z.boolean().optional().default(false).describe('Include stack traces in text view'),
   limit: z.number().int().min(1).max(5000).optional().describe('Max number of entries to return'),
   contains: z.string().optional().describe('Substring filter on entry.text'),
   sinceMs: z.number().nonnegative().optional().describe('Only entries with time >= sinceMs')

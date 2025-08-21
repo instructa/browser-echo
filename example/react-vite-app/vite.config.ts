@@ -5,9 +5,6 @@ import browserEcho from '@browser-echo/vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), browserEcho({ 
-    stackMode: 'condensed',
-    mcp: {
-      url: 'http://localhost:5179'
-    }
+    stackMode: 'condensed'
   })],
 })
