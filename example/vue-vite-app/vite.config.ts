@@ -6,7 +6,10 @@ import browserEcho from '@browser-echo/vite'
 export default defineConfig({
   plugins: [vue(), browserEcho(
     {
-      stackMode: 'condensed'
+      stackMode: 'condensed',
+      mcp: {
+        suppressTerminal: true
+      }
     },
   )],
 })

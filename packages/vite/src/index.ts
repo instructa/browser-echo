@@ -1,8 +1,9 @@
 // Avoid exporting Vite types to prevent cross-version type mismatches in consumers
 import ansis from 'ansis';
 import type { BrowserLogLevel } from '@browser-echo/core';
-import { mkdirSync, appendFileSync } from 'node:fs';
+import { mkdirSync, appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { dirname, join as joinPath } from 'node:path';
+import { tmpdir } from 'node:os';
 
 export interface BrowserLogsToTerminalOptions {
   enabled?: boolean;
@@ -18,12 +19,18 @@ export interface BrowserLogsToTerminalOptions {
   truncate?: number;
   fileLog?: { enabled?: boolean; dir?: string };
   mcp?: { url?: string; routeLogs?: `/${string}`; suppressTerminal?: boolean; headers?: Record<string,string> };
+  /** Enable MCP auto-discovery (env → discovery file → port scan) */
+  discoverMcp?: boolean;
+  /** Refresh interval for discovery (ms) */
+  discoveryRefreshMs?: number;
+  /** Ports to scan for /health when discovering MCP */
+  discoveryPorts?: number[];
 }
 
 type ResolvedOptions = Required<Omit<BrowserLogsToTerminalOptions, 'batch' | 'fileLog' | 'mcp'>> & {
   batch: Required<NonNullable<BrowserLogsToTerminalOptions['batch']>>;
   fileLog: Required<NonNullable<BrowserLogsToTerminalOptions['fileLog']>>;
-  mcp: { url: string; routeLogs: `/${string}`; suppressTerminal: boolean; headers: Record<string,string> };
+  mcp: { url: string; routeLogs: `/${string}`; suppressTerminal: boolean; headers: Record<string,string>; suppressProvided: boolean };
 };
 
 const DEFAULTS: ResolvedOptions = {
@@ -39,7 +46,10 @@ const DEFAULTS: ResolvedOptions = {
   batch: { size: 20, interval: 300 },
   truncate: 10_000,
   fileLog: { enabled: false, dir: 'logs/frontend' },
-  mcp: { url: '', routeLogs: '/__client-logs', suppressTerminal: true, headers: {} }
+  mcp: { url: '', routeLogs: '/__client-logs', suppressTerminal: true, headers: {} },
+  discoverMcp: true,
+  discoveryRefreshMs: 30_000,
+  discoveryPorts: [5179, 5178, 3001, 4000, 5173]
 };
 
 export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): any {
@@ -49,12 +59,11 @@ export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): an
     batch: { ...DEFAULTS.batch, ...(opts.batch ?? {}) },
     fileLog: { ...DEFAULTS.fileLog, ...(opts.fileLog ?? {}) },
     mcp: {
-      url: opts.mcp?.url || process.env.BROWSER_ECHO_MCP_URL || '',
+      url: normalizeMcpBaseUrl(opts.mcp?.url || process.env.BROWSER_ECHO_MCP_URL || ''),
       routeLogs: (opts.mcp?.routeLogs || (process.env.BROWSER_ECHO_MCP_LOGS_ROUTE as `/${string}`) || '/__client-logs') as `/${string}`,
-      suppressTerminal: typeof opts.mcp?.suppressTerminal === 'boolean'
-        ? opts.mcp.suppressTerminal
-        : !!(opts.mcp?.url || process.env.BROWSER_ECHO_MCP_URL) && process.env.BROWSER_ECHO_SUPPRESS_TERMINAL !== '0',
-      headers: opts.mcp?.headers || {}
+      suppressTerminal: typeof opts.mcp?.suppressTerminal === 'boolean' ? opts.mcp.suppressTerminal : false,
+      headers: opts.mcp?.headers || {},
+      suppressProvided: typeof opts.mcp?.suppressTerminal === 'boolean'
     }
   };
   const VIRTUAL_ID = '\0virtual:browser-echo';
@@ -84,12 +93,114 @@ export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): an
   };
 }
 
+function normalizeMcpBaseUrl(input: string | undefined): string {
+  if (!input) return '';
+  const raw = String(input).trim();
+  if (!raw) return '';
+  const noSlash = raw.replace(/\/+$/, '');
+  // If a full MCP URL is provided (ending in /mcp), convert to base
+  return noSlash.replace(/\/mcp$/i, '');
+}
+
 function attachMiddleware(server: any, options: ResolvedOptions) {
   const sessionStamp = new Date().toISOString().replace(/[:.]/g, '-');
   const logFilePath = joinPath(options.fileLog.dir, `dev-${sessionStamp}.log`);
   if (options.fileLog.enabled) { try { mkdirSync(dirname(logFilePath), { recursive: true }); } catch {} }
 
-  const mcpUrl = options.mcp.url ? options.mcp.url.replace(/\/$/, '') : '';
+  // Dynamic MCP ingest resolution (explicit → env → discovery file → port scan)
+  let resolvedBase = options.mcp.url ? options.mcp.url.replace(/\/$/, '') : '';
+  let resolvedIngest = resolvedBase ? `${resolvedBase}${options.mcp.routeLogs}` : '';
+  let lastAnnouncement = '';
+
+  const refreshMs = Math.max(1_000, Number(options.discoveryRefreshMs || 30_000) | 0);
+
+  const announce = (msg: string) => {
+    if (msg && msg !== lastAnnouncement) {
+      try { server.config.logger.info(msg); } catch {}
+      lastAnnouncement = msg;
+    }
+  };
+
+  async function tryPingHealth(base: string, timeoutMs = 400): Promise<boolean> {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), timeoutMs);
+      const res = await fetch(`${base}/health`, { signal: ctrl.signal as any, cache: 'no-store' as any });
+      clearTimeout(t);
+      return !!res?.ok;
+    } catch { return false; }
+  }
+
+  function readDiscoveryFile(): { url: string; routeLogs?: string; ts?: number } | null {
+    try {
+      const candidates = [
+        joinPath(process.cwd(), '.browser-echo-mcp.json'),
+        joinPath(tmpdir(), 'browser-echo-mcp.json')
+      ];
+      for (const p of candidates) {
+        try {
+          if (!existsSync(p)) continue;
+          const raw = readFileSync(p, 'utf-8');
+          const data = JSON.parse(raw);
+          const url = (data?.url ? String(data.url) : '').replace(/\/$/, '');
+          const routeLogs = data?.routeLogs ? String(data.routeLogs) : undefined;
+          const ts = typeof data?.timestamp === 'number' ? data.timestamp : undefined;
+          if (url) return { url, routeLogs, ts };
+        } catch {}
+      }
+    } catch {}
+    return null;
+  }
+
+  async function resolveMcp() {
+    if (!options.discoverMcp) return;
+    // 1) Explicit (already normalized)
+    const explicit = normalizeMcpBaseUrl(options.mcp.url || process.env.BROWSER_ECHO_MCP_URL || '');
+    if (explicit) {
+      const base = explicit.replace(/\/$/, '');
+      resolvedBase = base;
+      resolvedIngest = `${base}${options.mcp.routeLogs}`;
+      announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
+      return;
+    }
+    // 2) Discovery file (fresh within 60s)
+    const disc = readDiscoveryFile();
+    if (disc && disc.url) {
+      const ageOk = !disc.ts || (Date.now() - Number(disc.ts)) < 60_000;
+      if (ageOk) {
+        const base = String(disc.url).replace(/\/$/, '');
+        const routeLogs = (disc.routeLogs as `/${string}`) || options.mcp.routeLogs;
+        resolvedBase = base;
+        resolvedIngest = `${base}${routeLogs}`;
+        announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
+        return;
+      }
+    }
+    // 3) Port scan common ports
+    for (const port of options.discoveryPorts || []) {
+      for (const host of [`http://127.0.0.1:${port}`, `http://localhost:${port}`]) {
+        if (await tryPingHealth(host)) {
+          resolvedBase = host;
+          resolvedIngest = `${host}${options.mcp.routeLogs}`;
+          announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
+          return;
+        }
+      }
+    }
+    // 4) Not found
+    if (resolvedIngest) {
+      // lost connection → inform once
+      announce(`${options.tag} no MCP detected; logging locally. To forward, set BROWSER_ECHO_MCP_URL or start MCP.`);
+    }
+    resolvedBase = '';
+    resolvedIngest = '';
+  }
+
+  // Kick off periodic discovery
+  if (options.discoverMcp) {
+    resolveMcp();
+    try { const h = setInterval(resolveMcp, refreshMs); (h as any).unref?.(); } catch {}
+  }
 
   server.middlewares.use(options.route, (req, res, next) => {
     if (req.method !== 'POST') return next();
@@ -101,11 +212,11 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
       if (!payload || !Array.isArray(payload.entries)) { res.statusCode = 400; res.end('invalid payload'); return; }
 
       // Mirror to MCP server if configured
-      if (mcpUrl) {
+      const targetIngest = resolvedIngest || '';
+      if (targetIngest) {
         try {
-          const target = `${mcpUrl}${options.mcp.routeLogs}`;
           // do not await
-          fetch(target, {
+          fetch(targetIngest, {
             method: 'POST',
             headers: { 'content-type': 'application/json', ...options.mcp.headers },
             body: JSON.stringify(payload),
@@ -116,7 +227,15 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
       }
 
       const logger = server.config.logger;
-      const shouldPrint = !(options.mcp.suppressTerminal && mcpUrl);
+      const envVal = process.env.BROWSER_ECHO_SUPPRESS_TERMINAL;
+      const forceSuppress = envVal === '1';
+      const forcePrint = envVal === '0';
+      let suppressTerminal: boolean;
+      if (forceSuppress) suppressTerminal = true;
+      else if (forcePrint) suppressTerminal = false;
+      else if (options.mcp.suppressProvided) suppressTerminal = options.mcp.suppressTerminal && !!targetIngest;
+      else suppressTerminal = !!targetIngest; // auto: suppress when forwarding active
+      const shouldPrint = !suppressTerminal;
       const sid = (payload.sessionId ?? 'anon').slice(0, 8);
       for (const entry of payload.entries) {
         const level = normalizeLevel(entry.level);
