@@ -4,6 +4,12 @@ Core client-side functionality for streaming browser console logs to your dev te
 
 This package provides the `initBrowserEcho` function that patches `console.*` methods and forwards logs to a development server endpoint. It's designed to be used as a dependency by framework-specific providers.
 
+## Table of Contents
+
+- [Installation](#installation)
+- [Usage](#usage)
+- [Install MCP Server](#install-mcp-server)
+
 ## Features
 
 - Drop-in client patch that wraps `console.log/info/warn/error/debug`
@@ -16,6 +22,8 @@ This package provides the `initBrowserEcho` function that patches `console.*` me
 ## Installation
 
 ```bash
+npm install -D @browser-echo/core
+# or
 pnpm add -D @browser-echo/core
 ```
 
@@ -62,6 +70,21 @@ This core package is typically used through framework-specific providers:
 - **@browser-echo/vue** - For Vue (non-Vite)
 
 See the [main repository](https://github.com/instructa/browser-echo) for complete setup guides.
+
+## Install MCP Server
+
+For core usage, MCP forwarding depends on your server-side route implementation. The core package only handles browser-side log collection.
+
+**📖 [First, set up the MCP server](../mcp/README.md#installation) for your AI assistant, then configure framework options below.**
+
+### Environment Variables
+
+- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Set in your server environment
+- `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Control terminal output in your route handler
+
+### Server Route MCP Integration
+
+See the [React MCP Settings](../react/README.md#mcp-settings) for an example server route with MCP forwarding.
 
 ## Author
 

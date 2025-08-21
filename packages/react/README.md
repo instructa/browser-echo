@@ -2,7 +2,16 @@
 
 React component for streaming browser console logs to your dev terminal (non-Vite setups).
 
-This package provides a React provider component for non-Vite environments. If you're using Vite, prefer [@browser-echo/vite](https://github.com/instructa/browser-echo/tree/main/packages/vite) which includes the dev middleware automatically.
+> **💡 Using React with Vite?** Check out our [React + Vite setup guide](../vite/README.md#react--vite) for the recommended approach using `@browser-echo/vite`.
+
+This package provides a React provider component for non-Vite environments. If you're using Vite, prefer [@browser-echo/vite](../vite/README.md#react--vite) which includes the dev middleware automatically.
+
+## Table of Contents
+
+- [Installation](#installation)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Install MCP Server](#install-mcp-server)
 
 ## Features
 
@@ -26,6 +35,8 @@ This package provides a React provider component for non-Vite environments. If y
 ## Installation
 
 ```bash
+npm install -D @browser-echo/react @browser-echo/core
+# or
 pnpm add -D @browser-echo/react @browser-echo/core
 ```
 
@@ -148,6 +159,51 @@ if (process.env.NODE_ENV === 'development') {
     include: ['warn', 'error'],
   });
 }
+```
+
+## Install MCP Server
+
+For React (non-Vite) apps, MCP forwarding depends on your server-side route implementation. The React provider only handles browser-side log collection.
+
+**📖 [First, set up the MCP server](../mcp/README.md#installation) for your AI assistant, then configure framework options below.**
+
+### Environment Variables
+
+- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Set in your server environment
+- `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Control terminal output in your route handler
+
+### Server Route MCP Integration
+
+Update your server route to forward to MCP:
+
+```js
+// Example Express route with MCP forwarding
+app.post('/__client-logs', async (req, res) => {
+  const payload = req.body;
+  
+  // Forward to MCP if configured
+  const mcpUrl = process.env.BROWSER_ECHO_MCP_URL;
+  if (mcpUrl) {
+    const ingestUrl = mcpUrl.replace('/mcp', '/__client-logs');
+    try {
+      await fetch(ingestUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      // Suppress terminal output when forwarding
+      if (process.env.BROWSER_ECHO_SUPPRESS_TERMINAL !== '0') {
+        return res.status(204).end();
+      }
+    } catch {}
+  }
+  
+  // Local terminal output
+  for (const entry of payload.entries) {
+    console.log(`[browser] ${entry.level.toUpperCase()}: ${entry.text}`);
+  }
+  res.status(204).end();
+});
 ```
 
 ## Dependencies

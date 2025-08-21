@@ -1,13 +1,29 @@
 {
   "name": "@browser-echo/vite",
-  "version": "0.0.0",
+  "version": "0.0.6",
   "type": "module",
   "sideEffects": false,
-  "files": ["dist"],
-  "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.mjs" }
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/instructa/browser-echo.git",
+    "directory": "packages/vite"
   },
-  "peerDependencies": { "vite": ">=4.0.0" },
+  "author": {
+    "name": "Kevin Kern",
+    "url": "https://github.com/regenrek"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "peerDependencies": {
+    "vite": ">=4.0.0"
+  },
   "dependencies": {
     "ansis": "^3.2.0",
     "@browser-echo/core": "workspace:*"

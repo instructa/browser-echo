@@ -1,8 +1,17 @@
 {
   "name": "@browser-echo/nuxt",
-  "version": "0.0.0",
+  "version": "0.0.6",
   "type": "module",
   "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/instructa/browser-echo.git",
+    "directory": "packages/nuxt"
+  },
+  "author": {
+    "name": "Kevin Kern",
+    "url": "https://github.com/regenrek"
+  },
   "files": [
     "dist"
   ],

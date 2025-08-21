@@ -1,13 +1,33 @@
 {
   "name": "@browser-echo/core",
-  "version": "0.0.0",
+  "version": "0.0.6",
   "type": "module",
   "sideEffects": false,
-  "files": ["dist"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/instructa/browser-echo.git",
+    "directory": "packages/core"
+  },
+  "author": {
+    "name": "Kevin Kern",
+    "url": "https://github.com/regenrek"
+  },
+  "files": [
+    "dist"
+  ],
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.mjs" },
-    "./client": { "types": "./dist/client.d.ts", "default": "./dist/client.mjs" },
-    "./types": { "types": "./dist/types.d.ts", "default": "./dist/types.mjs" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.mjs"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.mjs"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.mjs"
+    }
   },
   "scripts": {
     "build": "unbuild",

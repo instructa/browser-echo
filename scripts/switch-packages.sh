@@ -4,6 +4,7 @@
 # Usage: 
 #   ./scripts/switch-packages.sh workspace           # Switch to workspace:* versions
 #   ./scripts/switch-packages.sh pkg <commit_hash>   # Switch to pkg.pr.new versions
+#   ./scripts/switch-packages.sh npm [version]       # Switch to official npm packages
 
 set -e
 
@@ -21,6 +22,7 @@ EXAMPLES=(
 
 # Browser Echo packages to update
 PACKAGES=(
+  "@browser-echo/core"
   "@browser-echo/next"
   "@browser-echo/nuxt"
   "@browser-echo/react"
@@ -29,15 +31,19 @@ PACKAGES=(
 )
 
 usage() {
-  echo "Usage: $0 <mode> [commit_hash]"
+  echo "Usage: $0 <mode> [version|commit_hash]"
   echo ""
   echo "Modes:"
   echo "  workspace           Switch to workspace:* versions"
   echo "  pkg <commit_hash>   Switch to pkg.pr.new versions with specified commit hash"
+  echo "  npm [version]       Switch to official npm packages (latest if no version specified)"
   echo ""
   echo "Examples:"
   echo "  $0 workspace"
   echo "  $0 pkg 880c16c"
+  echo "  $0 npm"
+  echo "  $0 npm 0.0.4"
+  echo "  $0 npm ^0.0.4"
   exit 1
 }
 
@@ -116,6 +122,54 @@ switch_to_pkg() {
   echo "✨ All examples switched to pkg.pr.new versions!"
 }
 
+switch_to_npm() {
+  local version="$1"
+  
+  # Default to "latest" if no version specified
+  if [[ -z "$version" ]]; then
+    version="latest"
+  fi
+  
+  echo "🔄 Switching all examples to npm packages (version: $version)..."
+  
+  for example in "${EXAMPLES[@]}"; do
+    package_json="$ROOT_DIR/$example/package.json"
+    
+    if [[ ! -f "$package_json" ]]; then
+      echo "⚠️  Skipping $example (package.json not found)"
+      continue
+    fi
+    
+    echo "📦 Processing $example..."
+    
+    # Update each package to npm version
+    for pkg_name in "${PACKAGES[@]}"; do
+      # Check if package exists in devDependencies or dependencies
+      if grep -q "\"$pkg_name\":" "$package_json"; then
+        # Determine the version string to use
+        local version_string
+        if [[ "$version" == "latest" ]]; then
+          version_string="latest"
+        else
+          version_string="$version"
+        fi
+        
+        # Use sed to replace the version
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+          # macOS sed
+          sed -i '' "s|\"$pkg_name\": \"[^\"]*\"|\"$pkg_name\": \"$version_string\"|g" "$package_json"
+        else
+          # Linux sed
+          sed -i "s|\"$pkg_name\": \"[^\"]*\"|\"$pkg_name\": \"$version_string\"|g" "$package_json"
+        fi
+        echo "  ✅ Updated $pkg_name to $version_string"
+      fi
+    done
+  done
+  
+  echo "✨ All examples switched to npm packages!"
+}
+
 main() {
   if [[ $# -eq 0 ]]; then
     usage
@@ -129,6 +183,9 @@ main() {
       ;;
     "pkg")
       switch_to_pkg "$2"
+      ;;
+    "npm")
+      switch_to_npm "$2"
       ;;
     *)
       echo "❌ Error: Unknown mode '$mode'"

@@ -9,13 +9,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.5.13"
+    "vue": "^3.5.18"
   },
   "devDependencies": {
     "@browser-echo/vite": "https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@e0bbe63",
-    "@vitejs/plugin-vue": "^5.2.1",
-    "typescript": "~5.7.2",
-    "vite": "^7.0.0",
-    "vue-tsc": "^2.1.10"
+    "@vitejs/plugin-vue": "^6.0.1",
+    "typescript": "~5.9.2",
+    "vite": "^7.1.3",
+    "vue-tsc": "^3.0.5"
   }
 }

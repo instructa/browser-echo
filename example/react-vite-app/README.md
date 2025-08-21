@@ -15,19 +15,26 @@ Browser Echo streams browser console logs to your Vite dev server terminal with 
 
 ## Getting Started
 
-1. Install dependencies:
+1. Install Browser Echo for Vite:
+   ```bash
+   npm install -D @browser-echo/vite
+   # or
+   pnpm add -D @browser-echo/vite
+   ```
+
+2. Install dependencies:
    ```bash
    npm install
    ```
 
-2. Start the development server:
+3. Start the development server:
    ```bash
    npm run dev
    ```
 
-3. Open the application in your browser and interact with the demo buttons
+4. Open the application in your browser and interact with the demo buttons
 
-4. Watch your terminal to see browser console logs streamed in real-time!
+5. Watch your terminal to see browser console logs streamed in real-time!
 
 ## What to Expect
 

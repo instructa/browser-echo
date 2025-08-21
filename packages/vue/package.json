@@ -1,14 +1,32 @@
 {
   "name": "@browser-echo/vue",
-  "version": "0.0.0",
+  "version": "0.0.6",
   "type": "module",
   "sideEffects": false,
-  "files": ["dist"],
-  "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.mjs" }
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/instructa/browser-echo.git",
+    "directory": "packages/vue"
   },
-  "peerDependencies": { "vue": ">=3.3.0" },
-  "dependencies": { "@browser-echo/core": "workspace:*" },
+  "author": {
+    "name": "Kevin Kern",
+    "url": "https://github.com/regenrek"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "peerDependencies": {
+    "vue": ">=3.3.0"
+  },
+  "dependencies": {
+    "@browser-echo/core": "workspace:*"
+  },
   "scripts": {
     "build": "unbuild",
     "dev": "unbuild -w",

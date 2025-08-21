@@ -16,15 +16,28 @@ No production impact. Providers enable this across frameworks by injecting a tin
 
 ## Quick start
 
+#### 1. Install Framework Package
+
+First, set up Browser Echo for your framework:
+
 | Framework | Quick Setup |
 | --- | --- |
-| TanStack / Vite (React/Vue) | [Installation Guide](packages/vite/README.md) |
+| TanStack / Vite | [Installation Guide](packages/vite/README.md#tanstack-start) |
 | Nuxt 3/4 | [Installation Guide](packages/nuxt/README.md) |
 | Next.js (App Router) | [Installation Guide](packages/next/README.md) |
-| Vue | [Installation Guide](packages/vue/README.md) |
-| React | [Installation Guide](packages/react/README.md) |
+| Vue + Vite | [Installation Guide](packages/vite/README.md#vue--vite) |
+| React + Vite | [Installation Guide](packages/vite/README.md#react--vite) |
+| Vue (non-Vite) | [Installation Guide](packages/vue/README.md) |
+| React (non-Vite) | [Installation Guide](packages/react/README.md) |
+| Core | [Installation Guide](packages/core/README.md) |
 
 > Framework users only install their provider + `@browser-echo/core`. No cross‑framework bloat.
+
+#### 2. Use Browser Echo MCP (Optional)
+
+**⚠️ IMPORTANT:** You **must complete step 1** (framework setup) first before MCP will work. The MCP server needs your framework to forward browser logs to it.
+
+**📖 [Set up Browser Echo MCP Server](packages/mcp/README.md)** for AI assistant integration
 
 ## What you get
 
@@ -34,8 +47,40 @@ No production impact. Providers enable this across frameworks by injecting a tin
 - Colorized terminal output
 - Optional file logging (Vite provider only)
 - Works great with AI assistants reading your terminal
+- **NEW:** MCP (Model Context Protocol) support for enhanced AI assistant integration
 
-## Options (shared shape)
+## Browser Echo MCP Server
+
+Browser Echo includes built-in MCP (Model Context Protocol) server support, enabling AI assistants like Claude (via Cursor) to interact with your frontend logs using natural language commands:
+
+- **"Check frontend logs"** - Retrieves recent console logs
+- **"Show only errors from the last 2 minutes"** - Filters by level and time
+- **"Find hydration mismatch warnings"** - Searches for specific content
+- **"Clear logs and start fresh"** - Clears the buffer for new captures
+- **"Focus on my current tab's logs"** - Filters by session
+
+The MCP server exposes two main tools:
+- `get_logs` - Fetch logs with extensive filtering (level, session, time, content)
+- `clear_logs` - Clear logs with soft/hard modes and session-specific clearing
+
+This integration makes debugging with AI assistants much more powerful - they can directly query and analyze your frontend logs without you having to copy/paste from the terminal.
+
+**📖 [Full MCP Setup Guide & Documentation](packages/mcp/README.md)**
+
+### MCP discovery and forwarding (Vite / Next / Nuxt)
+
+- By default, when an MCP server is detected, frameworks forward logs to MCP and **suppress local terminal output**. If MCP is not found, they log locally.
+- **Vite now auto‑discovers MCP** (no need to set `mcp.url`). It resolves in this order:
+  1. Explicit option/env: Vite plugin `mcp.url` or `BROWSER_ECHO_MCP_URL`
+  2. Discovery file written by the MCP server: `.browser-echo-mcp.json` (project root or OS tmp) containing `url` and `routeLogs`
+  3. Port scan of common local ports (127.0.0.1 / localhost)
+  4. Fallback to local terminal logging
+- **Terminal output control:**
+  - `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Force suppress terminal output (even when no MCP)
+  - `BROWSER_ECHO_SUPPRESS_TERMINAL=0` — Force show terminal output (even when MCP forwarding)
+  - Framework-specific options available (see individual framework package READMEs)
+
+## Options
 
 Most providers accept these options (names may appear as plugin options or component props):
 
@@ -44,7 +89,7 @@ type BrowserLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
 
 interface BrowserEchoOptions {
   enabled?: boolean;                 // default: true (dev only)
-  route?: `/${string}`;              // default: '/__client-logs'
+  route?: `/${string}`;              // default: '/api/client-logs' (Next), '/__client-logs' (others)
   include?: BrowserLogLevel[];       // default: ['log','info','warn','error','debug']
   preserveConsole?: boolean;         // default: true (also keep logging in the browser)
   tag?: string;                      // default: '[browser]'
@@ -72,7 +117,7 @@ interface BrowserEchoOptions {
 
   * Vite: ensure plugin is added and either `index.html` exists or you import the virtual module manually.
   * Nuxt: confirm the module is in `modules[]` and you’re in dev mode.
-  * Next: make sure `app/__client-logs/route.ts` is exported and `<BrowserEchoScript />` is rendered in `<head>`.
+* Next: make sure `app/api/client-logs/route.ts` is exported and `<BrowserEchoScript />` is rendered in `<head>`.
 
 * Endpoint 404
 

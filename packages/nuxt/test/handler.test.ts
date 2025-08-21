@@ -20,3 +20,16 @@ it('prints forwarded logs and returns 204', async () => {
   expect(w).toHaveBeenCalled();
   w.mockRestore();
 });
+
+it('returns 400 on invalid JSON', async () => {
+  // Remock h3 readBody to throw
+  const mod = await vi.importMock('h3') as any;
+  mod.readBody = async () => { throw new Error('bad'); };
+  const w = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  const e = {} as any;
+  const result = await (await import('../src/runtime/server/handler')).default(e);
+  expect(e.status).toBe(400);
+  // no print expected path guarantee; just ensure handler returns string
+  expect(typeof result).toBe('string');
+  w.mockRestore();
+});
