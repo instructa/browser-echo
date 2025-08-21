@@ -5,6 +5,12 @@ export default defineNuxtConfig({
   modules: ['@browser-echo/nuxt'],
   // optional browser-echo configuration:
   browserEcho: {
-    stackMode: 'condensed'
+    stackMode: 'condensed',
+    mcpServers: {
+      browserEcho: {
+        type: 'http',
+        url: 'http://localhost:5181/mcp'
+      }
+    }
   }
 })
