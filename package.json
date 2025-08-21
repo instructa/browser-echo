@@ -13,7 +13,10 @@
     "mcp": "node packages/mcp/dist/cli.mjs",
     "mcp:port": "node packages/mcp/dist/cli.mjs --port",
     "mcp:dev": "pnpm tsx packages/mcp/src/index.ts",
-    "mcp:build": "pnpm --filter @browser-echo/mcp run build"
+    "mcp:build": "pnpm --filter @browser-echo/mcp run build",
+    "install:packages": "pnpm --filter './packages/*' install",
+    "install:examples": "pnpm --filter './example/*' install",
+    "install:all": "pnpm install:packages && pnpm build && pnpm install:examples"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
