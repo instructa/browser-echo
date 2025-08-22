@@ -25,6 +25,7 @@ PACKAGES=(
   "@browser-echo/core"
   "@browser-echo/next"
   "@browser-echo/nuxt"
+  "@browser-echo/mcp"
   "@browser-echo/react"
   "@browser-echo/vite"
   "@browser-echo/vue"

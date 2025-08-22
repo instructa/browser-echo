@@ -47,8 +47,8 @@ importers:
         version: 19.1.1(react@19.1.1)
     devDependencies:
       '@browser-echo/mcp':
-        specifier: workspace:*
-        version: link:../../packages/mcp
+        specifier: https://pkg.pr.new/instructa/browser-echo/@browser-echo/mcp@f3039cc
+        version: https://pkg.pr.new/instructa/browser-echo/@browser-echo/mcp@f3039cc(express@5.1.0)
       '@browser-echo/next':
         specifier: https://pkg.pr.new/instructa/browser-echo/@browser-echo/next@f3039cc
         version: https://pkg.pr.new/instructa/browser-echo/@browser-echo/next@f3039cc(next@15.4.7(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
@@ -521,6 +521,13 @@ packages:
   '@browser-echo/core@https://pkg.pr.new/instructa/browser-echo/@browser-echo/core@f3039cc55e4292c92e4c791b386c7361117cf9e7':
     resolution: {tarball: https://pkg.pr.new/instructa/browser-echo/@browser-echo/core@f3039cc55e4292c92e4c791b386c7361117cf9e7}
     version: 0.0.6
+
+  '@browser-echo/mcp@https://pkg.pr.new/instructa/browser-echo/@browser-echo/mcp@f3039cc':
+    resolution: {tarball: https://pkg.pr.new/instructa/browser-echo/@browser-echo/mcp@f3039cc}
+    version: 0.0.1
+    hasBin: true
+    peerDependencies:
+      express: ^4 || ^5
 
   '@browser-echo/next@https://pkg.pr.new/instructa/browser-echo/@browser-echo/next@f3039cc':
     resolution: {tarball: https://pkg.pr.new/instructa/browser-echo/@browser-echo/next@f3039cc}
@@ -7316,6 +7323,16 @@ snapshots:
       '@babel/helper-validator-identifier': 7.27.1
 
   '@browser-echo/core@https://pkg.pr.new/instructa/browser-echo/@browser-echo/core@f3039cc55e4292c92e4c791b386c7361117cf9e7': {}
+
+  '@browser-echo/mcp@https://pkg.pr.new/instructa/browser-echo/@browser-echo/mcp@f3039cc(express@5.1.0)':
+    dependencies:
+      '@modelcontextprotocol/sdk': 1.17.2
+      citty: 0.1.6
+      express: 5.1.0
+      h3: 1.15.4
+      zod: 4.0.17
+    transitivePeerDependencies:
+      - supports-color
 
   '@browser-echo/next@https://pkg.pr.new/instructa/browser-echo/@browser-echo/next@f3039cc(next@15.4.7(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(react-dom@19.1.1(react@19.1.1))(react@19.1.1)':
     dependencies:
