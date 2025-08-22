@@ -18,12 +18,12 @@ export default defineEventHandler(async (event) => {
   }
 
   // Resolve MCP URL: env var first, otherwise discover in development
-  const mcpUrl = MCP_URL || (process.env.NODE_ENV === 'development' ? await __resolveMcpUrlNuxt() : '');
+  const mcp = MCP_URL ? { url: MCP_URL, token: '' } : (process.env.NODE_ENV === 'development' ? await __resolveMcpUrlNuxt() : { url: '', token: '' });
 
   // Forward to MCP server if available (fire-and-forget)
-  if (mcpUrl) {
+  if (mcp.url) {
     try {
-      fetch(`${mcpUrl}${MCP_LOGS_ROUTE}`, {
+      fetch(`${mcp.url}${MCP_LOGS_ROUTE}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
   }
 
   // Dynamically decide whether to print to terminal
-  const shouldPrint = !(mcpUrl && process.env.BROWSER_ECHO_SUPPRESS_TERMINAL !== '0');
+  const shouldPrint = !(mcp.url && process.env.BROWSER_ECHO_SUPPRESS_TERMINAL !== '0');
 
   const sid = (payload.sessionId ?? 'anon').slice(0, 8);
   for (const entry of payload.entries) {
@@ -76,20 +76,30 @@ function color(level: Level, msg: string) {
 }
 function dim(s: string) { return c.dim + s + c.reset; }
 
-let __mcpDiscoveryCacheNuxt: { url: string; ts: number } | null = null;
+let __mcpDiscoveryCacheNuxt: { url: string; token?: string; ts: number } | null = null;
 
-async function __resolveMcpUrlNuxt(): Promise<string> {
+async function __resolveMcpUrlNuxt(): Promise<{ url: string; token?: string }> {
   const now = Date.now();
   const CACHE_TTL_MS = 30_000;
 
   if (__mcpDiscoveryCacheNuxt && (now - __mcpDiscoveryCacheNuxt.ts) < CACHE_TTL_MS) {
-    return __mcpDiscoveryCacheNuxt.url;
+    return { url: __mcpDiscoveryCacheNuxt.url, token: __mcpDiscoveryCacheNuxt.token };
   }
 
-  const fromFile = await __readDiscoveryUrlFromFileNuxt();
-  if (fromFile) {
-    __mcpDiscoveryCacheNuxt = { url: fromFile, ts: now };
-    return fromFile;
+  const fromFile = await __readDiscoveryFromFileNuxt();
+  if (fromFile.url) {
+    if (await __pingHealthNuxt(`${fromFile.url}/health`, 300)) {
+      __mcpDiscoveryCacheNuxt = { url: fromFile.url, token: fromFile.token, ts: now };
+      return fromFile;
+    }
+    // purge stale tmp discovery
+    try {
+      const { unlinkSync, existsSync } = await import('node:fs');
+      const { join } = await import('node:path');
+      const { tmpdir } = await import('node:os');
+      const stale = join(tmpdir(), 'browser-echo-mcp.json');
+      if (existsSync(stale)) unlinkSync(stale);
+    } catch {}
   }
 
   const ports = [5179, 5178, 3001, 4000, 5173];
@@ -98,16 +108,16 @@ async function __resolveMcpUrlNuxt(): Promise<string> {
     for (const base of bases) {
       if (await __pingHealthNuxt(`${base}/health`, 400)) {
         __mcpDiscoveryCacheNuxt = { url: base, ts: now };
-        return base;
+        return { url: base };
       }
     }
   }
 
   __mcpDiscoveryCacheNuxt = { url: '', ts: now };
-  return '';
+  return { url: '' };
 }
 
-async function __readDiscoveryUrlFromFileNuxt(): Promise<string> {
+async function __readDiscoveryFromFileNuxt(): Promise<{ url: string; token?: string }> {
   try {
     const { readFileSync, existsSync } = await import('node:fs');
     const { join } = await import('node:path');
@@ -123,11 +133,12 @@ async function __readDiscoveryUrlFromFileNuxt(): Promise<string> {
         const data = JSON.parse(raw);
         const url = (data?.url ? String(data.url) : '').replace(/\/$/, '');
         const ts = typeof data?.timestamp === 'number' ? data.timestamp : 0;
-        if (url && (Date.now() - ts) < 60_000) return url;
+        const token = data?.token ? String(data.token) : undefined;
+        if (url && (Date.now() - ts) < 60_000) return { url, token };
       } catch {}
     }
   } catch {}
-  return '';
+  return { url: '' };
 }
 
 async function __pingHealthNuxt(url: string, timeoutMs: number): Promise<boolean> {

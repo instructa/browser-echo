@@ -6,6 +6,7 @@
  * plus the root-level `node_modules`. Also removes framework build dirs in examples:
  * `.nuxt`, `.next`, `.tanstack`, `.nitro`, `.output`.
  * Optionally runs `pnpm install` + `pnpm build` afterwards.
+ * Additionally, prunes stale Browser Echo discovery files from CWD and tmpdir.
  *
  * Usage:
  *   pnpm tsx scripts/cleanup.ts [--install|-i]
@@ -15,6 +16,7 @@ import { execSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { globSync } from 'glob'
+import { tmpdir } from 'node:os'
 
 const args = process.argv.slice(2)
 const runInstall = args.includes('--install') || args.includes('-i')
@@ -64,6 +66,34 @@ function removeDirectory(targetPath: string) {
   }
 }
 
+function pruneDiscoveryFiles() {
+  const candidates = [
+    path.join(rootPath, '.browser-echo-mcp.json'),
+    path.join(tmpdir(), 'browser-echo-mcp.json')
+  ]
+  let count = 0
+  for (const file of candidates) {
+    try {
+      if (!fs.existsSync(file)) continue
+      const raw = fs.readFileSync(file, 'utf-8')
+      const data = JSON.parse(raw)
+      const ts = typeof data?.timestamp === 'number' ? data.timestamp : 0
+      const pid = typeof data?.pid === 'number' ? data.pid : 0
+      let stale = false
+      if (ts && (Date.now() - ts) > 60 * 60 * 1000) stale = true // >1h old
+      if (pid) {
+        try { process.kill(pid, 0) } catch { stale = true }
+      }
+      if (stale) {
+        fs.unlinkSync(file)
+        count++
+        console.log(`🧹 Removed stale discovery: ${file}`)
+      }
+    } catch {}
+  }
+  if (count) console.log(`✅ Pruned ${count} discovery file(s)`) 
+}
+
 function main() {
   console.log('🧹 Cleaning build and dependency dirs in root, packages/* and example/* ...')
 
@@ -75,6 +105,9 @@ function main() {
     targets.forEach(removeDirectory)
     console.log(`✅ Removed ${targets.length} directories`)
   }
+
+  // Always prune discovery files
+  pruneDiscoveryFiles()
 
   if (runInstall) {
     console.log('\n📦 Installing dependencies and building workspace...')

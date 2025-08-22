@@ -19,12 +19,12 @@ export async function POST(req: NextRequest) {
   if (!payload || !Array.isArray(payload.entries)) return new NextResponse('invalid payload', { status: 400 });
 
   // Resolve MCP URL: env var has priority, otherwise discover in development
-  const mcpUrl = MCP_URL || (process.env.NODE_ENV === 'development' ? await __resolveMcpUrl() : '');
+  const mcp = MCP_URL ? { url: MCP_URL, token: '' } : (process.env.NODE_ENV === 'development' ? await __resolveMcpUrl() : { url: '', token: '' });
 
   // Forward to MCP server if available (fire-and-forget)
-  if (mcpUrl) {
+  if (mcp.url) {
     try {
-      fetch(`${mcpUrl}${MCP_LOGS_ROUTE}`, {
+      fetch(`${mcp.url}${MCP_LOGS_ROUTE}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Dynamically decide whether to print to terminal
-  const shouldPrint = !(mcpUrl && process.env.BROWSER_ECHO_SUPPRESS_TERMINAL !== '0');
+  const shouldPrint = !(mcp.url && process.env.BROWSER_ECHO_SUPPRESS_TERMINAL !== '0');
 
   const sid = (payload.sessionId ?? 'anon').slice(0, 8);
   for (const entry of payload.entries) {
@@ -75,23 +75,34 @@ function color(level: BrowserLogLevel, msg: string) {
 }
 function dim(s: string) { return c.dim + s + c.reset; }
 
-let __mcpDiscoveryCache: { url: string; ts: number } | null = null;
+let __mcpDiscoveryCache: { url: string; token?: string; ts: number } | null = null;
 
-async function __resolveMcpUrl(): Promise<string> {
+async function __resolveMcpUrl(): Promise<{ url: string; token?: string }> {
   // 1) Env var already handled by caller; only discover in dev here.
   const now = Date.now();
   const CACHE_TTL_MS = 30_000;
 
   // Use fresh cache if present
   if (__mcpDiscoveryCache && (now - __mcpDiscoveryCache.ts) < CACHE_TTL_MS) {
-    return __mcpDiscoveryCache.url;
+    return { url: __mcpDiscoveryCache.url, token: __mcpDiscoveryCache.token };
   }
 
   // 2) Discovery file (project root or OS tmp)
-  const fromFile = await __readDiscoveryUrlFromFile();
-  if (fromFile) {
-    __mcpDiscoveryCache = { url: fromFile, ts: now };
-    return fromFile;
+  const fromFile = await __readDiscoveryFromFile();
+  if (fromFile.url) {
+    // health check to ensure it's alive
+    if (await __pingHealth(`${fromFile.url}/health`, 300)) {
+      __mcpDiscoveryCache = { url: fromFile.url, token: fromFile.token, ts: now };
+      return fromFile;
+    }
+    // purge stale tmp discovery
+    try {
+      const { unlinkSync, existsSync } = await import('node:fs');
+      const { join } = await import('node:path');
+      const { tmpdir } = await import('node:os');
+      const stale = join(tmpdir(), 'browser-echo-mcp.json');
+      if (existsSync(stale)) unlinkSync(stale);
+    } catch {}
   }
 
   // 3) Port scan common local ports
@@ -101,16 +112,16 @@ async function __resolveMcpUrl(): Promise<string> {
     for (const base of bases) {
       if (await __pingHealth(`${base}/health`, 400)) {
         __mcpDiscoveryCache = { url: base, ts: now };
-        return base;
+        return { url: base };
       }
     }
   }
 
   __mcpDiscoveryCache = { url: '', ts: now };
-  return '';
+  return { url: '' };
 }
 
-async function __readDiscoveryUrlFromFile(): Promise<string> {
+async function __readDiscoveryFromFile(): Promise<{ url: string; token?: string }> {
   try {
     const { readFileSync, existsSync } = await import('node:fs');
     const { join } = await import('node:path');
@@ -126,12 +137,13 @@ async function __readDiscoveryUrlFromFile(): Promise<string> {
         const data = JSON.parse(raw);
         const url = (data?.url ? String(data.url) : '').replace(/\/$/, '');
         const ts = typeof data?.timestamp === 'number' ? data.timestamp : 0;
+        const token = data?.token ? String(data.token) : undefined;
         // Treat as fresh if updated within the last 60s
-        if (url && (Date.now() - ts) < 60_000) return url;
+        if (url && (Date.now() - ts) < 60_000) return { url, token };
       } catch {}
     }
   } catch {}
-  return '';
+  return { url: '' };
 }
 
 async function __pingHealth(url: string, timeoutMs: number): Promise<boolean> {

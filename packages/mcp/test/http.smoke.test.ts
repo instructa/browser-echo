@@ -46,6 +46,16 @@ describe('@browser-echo/mcp streamable HTTP transport (smoke)', () => {
     const body = await diag.text();
     expect(body).toContain('http smoke');
   });
+
+  it('returns 400 on invalid MCP-Protocol-Version header', async () => {
+    const res = await httpPost('/mcp', { jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }, { 'MCP-Protocol-Version': 'not-a-version' });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 on non-initialize POST without Mcp-Session-Id', async () => {
+    const res = await httpPost('/mcp', { jsonrpc: '2.0', id: 2, method: 'tools/list' }, { 'MCP-Protocol-Version': '2025-06-18' });
+    expect(res.status).toBe(400);
+  });
 });
 
 

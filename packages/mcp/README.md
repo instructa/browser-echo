@@ -288,8 +288,9 @@ Best for local development with AI assistants:
 
 In stdio mode:
 - MCP communication happens over **stdio** (no HTTP MCP endpoint)
-- An **HTTP ingest server** runs at `http://127.0.0.1:5179/__client-logs` for browsers to POST logs
-- Console output: `MCP (stdio) listening on stdio (ingest HTTP active)`
+- An **HTTP ingest server** runs on an ephemeral port (127.0.0.1) for browsers to POST logs
+- The actual URL is written to `.browser-echo-mcp.json` in your project root and OS tmpdir
+- Console output (stderr): `MCP (stdio) listening on stdio (ingest HTTP active)`
 
 ### HTTP Mode
 
@@ -308,15 +309,14 @@ For web-based AI tools or when you need HTTP MCP access:
 ```
 
 In HTTP mode:
-- Full **Streamable HTTP** MCP endpoint at `http://127.0.0.1:5179/mcp`
-- HTTP ingest endpoint at `http://127.0.0.1:5179/__client-logs`
-- Console output: `MCP (Streamable HTTP) listening → http://127.0.0.1:5179/mcp`
+- Full **Streamable HTTP** MCP endpoint and HTTP ingest endpoint run on the specified host/port
+- Console output: `MCP (Streamable HTTP) listening → http://127.0.0.1:<port>/mcp`
 
 ### Custom Configuration
 
 ```bash
-# Custom ingest port in stdio mode
-node packages/mcp/bin/cli.mjs --port 8081
+# Custom ingest port in stdio mode (override ephemeral)
+BROWSER_ECHO_INGEST_PORT=8081 node packages/mcp/bin/cli.mjs
 
 # Custom HTTP server  
 node packages/mcp/bin/cli.mjs --http --host 0.0.0.0 --port 5179
@@ -397,7 +397,8 @@ publishLogEntry({
 ## Environment Variables
 
 - `BROWSER_ECHO_BUFFER_SIZE` — Max entries in memory (default: `1000`)
-- `BROWSER_ECHO_MCP_URL` — MCP server URL for framework forwarding (e.g., `http://127.0.0.1:5179/mcp`)
+- `BROWSER_ECHO_MCP_URL` — MCP server URL for framework forwarding (if set, frameworks bypass discovery)
+- `BROWSER_ECHO_INGEST_PORT` — Force a fixed ingest port in stdio mode (default: ephemeral)
 
 ---
 

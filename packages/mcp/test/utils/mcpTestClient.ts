@@ -7,6 +7,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 export interface McpTestClientOptions {
   cliEntryPoint: string; // absolute path to cli.mjs
+  cwd?: string; // optional working directory for the server process
+  env?: Record<string, string>; // optional environment variables for the server process
 }
 
 export class McpTestClient {
@@ -32,6 +34,8 @@ export class McpTestClient {
     this.transport = new StdioClientTransport({
       command: 'node',
       args: [this.options.cliEntryPoint, ...args],
+      cwd: this.options.cwd,
+      env: this.options.env,
     });
     await this.client.connect(this.transport);
   }

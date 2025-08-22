@@ -61,12 +61,15 @@ export async function startServer(
 
     // Always bring up an ingest-only HTTP endpoint so clients/frameworks can POST logs
     const host = options.host || '127.0.0.1';
-    const port = (options.port ?? 5179) | 0;
+    // Use env override if provided, otherwise let OS pick an ephemeral port
+    const envIngest = process.env.BROWSER_ECHO_INGEST_PORT;
+    const requested = Number(envIngest || 0) | 0;
+    const port = requested > 0 ? requested : 0;
     const logsRoute = options.logsRoute || '/__client-logs';
     await startIngestOnlyServer(store, { host, port, logsRoute });
 
     // eslint-disable-next-line no-console
-    console.log('MCP (stdio) listening on stdio (ingest HTTP active)');
+    console.error('MCP (stdio) listening on stdio (ingest HTTP active)');
     return;
   }
 
@@ -152,19 +155,36 @@ export async function startHttpServer(
 
       // Normalize body for POST
       let bodyBuf: Buffer | undefined;
+      let isInitialize = false;
       if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
         const raw = await readRawBody(event);
         if (raw && typeof raw === 'string') bodyBuf = Buffer.from(raw);
         else if (raw && (raw as any) instanceof Uint8Array) bodyBuf = Buffer.from(raw as any);
 
-        // Allow tool calls without explicit session id by assigning a default
+        // Validate MCP-Protocol-Version if provided (allow missing for backwards-compat)
         try {
-          const reqHeaders: Record<string, string | string[] | undefined> = event.node.req.headers as any;
-          const existingSid = reqHeaders['mcp-session-id'] || reqHeaders['Mcp-Session-Id'];
-          if (!existingSid) {
-            (event.node.req.headers as any)['mcp-session-id'] = 'default-session';
+          const ver = String((event.node.req.headers['mcp-protocol-version'] as any) || '').trim();
+          if (ver && !['2025-06-18','2025-03-26','2024-11-05'].includes(ver)) {
+            setResponseStatus(event, 400);
+            try { event.node.res.setHeader('content-type','application/json'); } catch {}
+            return JSON.stringify({ jsonrpc: '2.0', error: { code: -32600, message: 'Unsupported MCP-Protocol-Version' }, id: null });
           }
         } catch {}
+
+        // Enforce session id for non-initialize requests
+        try {
+          const parsed = bodyBuf ? JSON.parse(bodyBuf.toString('utf-8')) : undefined;
+          const rpcMethod = parsed && typeof parsed === 'object' ? String(parsed.method || '') : '';
+          isInitialize = rpcMethod === 'initialize';
+        } catch {}
+        if (!isInitialize) {
+          const sidHeader = (event.node.req.headers['mcp-session-id'] as string | undefined) || '';
+          if (!sidHeader) {
+            setResponseStatus(event, 400);
+            try { event.node.res.setHeader('content-type', 'application/json'); } catch {}
+            return JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'Missing Mcp-Session-Id header' }, id: null });
+          }
+        }
       }
 
       // Delegate to the SDK transport (writes to the Node response directly)
@@ -177,7 +197,7 @@ export async function startHttpServer(
     }
   }));
 
-  // Attach log ingest routes
+  // Attach log ingest routes (with optional token validation via header)
   app.use(createLogIngestRoutes(store, opts.logsRoute));
 
   // Health
@@ -203,7 +223,7 @@ export async function startHttpServer(
   await new Promise<void>((resolve) => nodeServer.listen(opts.port, opts.host, () => resolve()));
 
   // Advertise discovery so providers can auto-detect this server locally
-  await advertiseDiscovery(opts.host, opts.port, opts.logsRoute);
+  await advertiseDiscovery(opts.host, opts.port, opts.logsRoute, { projectRoot: process.cwd(), scope: 'http' });
 
   // eslint-disable-next-line no-console
   console.log(`MCP (Streamable HTTP) listening → http://${opts.host}:${opts.port}${opts.endpoint}`);
@@ -247,14 +267,18 @@ export async function startIngestOnlyServer(
 
   await new Promise<void>((resolve) => nodeServer.listen(opts.port, opts.host, () => resolve()));
 
+  // Determine the actual port assigned (when listening on port 0)
+  const addr = nodeServer.address() as any;
+  const actualPort = (addr && typeof addr === 'object' && 'port' in addr) ? (addr.port as number) : opts.port;
+
   // Advertise discovery for tooling that wants to auto-detect the ingest endpoint
-  await advertiseDiscovery(opts.host, opts.port, opts.logsRoute);
+  await advertiseDiscovery(opts.host, actualPort, opts.logsRoute, { projectRoot: process.cwd(), scope: 'stdio' });
 
   // eslint-disable-next-line no-console
-  console.log(`Log ingest endpoint        → http://${opts.host}:${opts.port}${opts.logsRoute}`);
+  console.error(`Log ingest endpoint        → http://${opts.host}:${actualPort}${opts.logsRoute}`);
 }
 
-async function advertiseDiscovery(host: string, port: number, logsRoute: `/${string}`) {
+async function advertiseDiscovery(host: string, port: number, logsRoute: `/${string}`, meta?: { projectRoot?: string; token?: string; scope?: 'http' | 'stdio' }) {
   try {
     const { writeFileSync } = await import('node:fs');
     const { join } = await import('node:path');
@@ -265,13 +289,14 @@ async function advertiseDiscovery(host: string, port: number, logsRoute: `/${str
       url: baseUrl,
       routeLogs: logsRoute,
       timestamp: Date.now(),
-      pid: typeof process !== 'undefined' ? process.pid : undefined
+      pid: typeof process !== 'undefined' ? process.pid : undefined,
+      projectRoot: meta?.projectRoot || process.cwd(),
+      token: meta?.token || undefined
     });
 
-    const files = [
-      join(process.cwd(), '.browser-echo-mcp.json'),
-      join(tmpdir(), 'browser-echo-mcp.json')
-    ];
+    const files = meta?.scope === 'http'
+      ? [ join(tmpdir(), 'browser-echo-mcp.json') ]
+      : [ join(process.cwd(), '.browser-echo-mcp.json'), join(tmpdir(), 'browser-echo-mcp.json') ];
 
     for (const f of files) {
       try { writeFileSync(f, payload); } catch {}
@@ -299,6 +324,30 @@ function createLogIngestRoutes(store: LogStore, logsRoute: `/${string}`) {
   // Log ingest (POST)
   router.post(logsRoute, defineEventHandler(async (event) => {
     try {
+      // Optional token check if discovery provided one (best-effort; disabled by default in dev)
+      try {
+        const { readFileSync, existsSync } = await import('node:fs');
+        const { join } = await import('node:path');
+        const { tmpdir } = await import('node:os');
+        const candidates = [join(process.cwd(), '.browser-echo-mcp.json'), join(tmpdir(), 'browser-echo-mcp.json')];
+        let requiredToken = '';
+        for (const p of candidates) {
+          try {
+            if (!existsSync(p)) continue;
+            const raw = readFileSync(p, 'utf-8');
+            const data = JSON.parse(raw);
+            if (data?.token) { requiredToken = String(data.token); break; }
+          } catch {}
+        }
+        if (requiredToken && process.env.BROWSER_ECHO_REQUIRE_TOKEN === '1') {
+          const got = String((event.node.req.headers['x-be-token'] as any) || '').trim();
+          if (!got || got !== requiredToken) {
+            setResponseStatus(event, 401);
+            return 'unauthorized';
+          }
+        }
+      } catch {}
+
       const raw = await readRawBody(event);
       const payload = typeof raw === 'string' ? JSON.parse(raw) : (raw ? JSON.parse(Buffer.from(raw as any).toString('utf-8')) : undefined);
       if (!payload || !Array.isArray(payload.entries)) {

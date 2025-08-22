@@ -1,7 +1,7 @@
 // Avoid exporting Vite types to prevent cross-version type mismatches in consumers
 import ansis from 'ansis';
 import type { BrowserLogLevel } from '@browser-echo/core';
-import { mkdirSync, appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { mkdirSync, appendFileSync, existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { dirname, join as joinPath } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -131,7 +131,7 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
     } catch { return false; }
   }
 
-  function readDiscoveryFile(): { url: string; routeLogs?: string; ts?: number } | null {
+  function readDiscoveryFile(): { url: string; routeLogs?: string; ts?: number; token?: string; pid?: number } | null {
     try {
       const candidates = [
         joinPath(process.cwd(), '.browser-echo-mcp.json'),
@@ -145,7 +145,9 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
           const url = (data?.url ? String(data.url) : '').replace(/\/$/, '');
           const routeLogs = data?.routeLogs ? String(data.routeLogs) : undefined;
           const ts = typeof data?.timestamp === 'number' ? data.timestamp : undefined;
-          if (url) return { url, routeLogs, ts };
+          const token = data?.token ? String(data.token) : undefined;
+          const pid = typeof data?.pid === 'number' ? data.pid : undefined;
+          if (url) return { url, routeLogs, ts, token, pid };
         } catch {}
       }
     } catch {}
@@ -170,10 +172,18 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
       if (ageOk) {
         const base = String(disc.url).replace(/\/$/, '');
         const routeLogs = (disc.routeLogs as `/${string}`) || options.mcp.routeLogs;
-        resolvedBase = base;
-        resolvedIngest = `${base}${routeLogs}`;
-        announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
-        return;
+        // Validate aliveness: prefer health ping; optionally check PID
+        const healthy = await tryPingHealth(base, 300);
+        let pidOk = true;
+        try { if (disc.pid && disc.pid > 0) { process.kill(disc.pid, 0); pidOk = true; } } catch { pidOk = false; }
+        if (healthy || pidOk) {
+          resolvedBase = base;
+          resolvedIngest = `${base}${routeLogs}`;
+          announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
+          return;
+        }
+        // purge stale tmp discovery to speed up re-discovery
+        try { const stale = joinPath(tmpdir(), 'browser-echo-mcp.json'); if (existsSync(stale)) unlinkSync(stale); } catch {}
       }
     }
     // 3) Port scan common ports
@@ -222,7 +232,7 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
             body: JSON.stringify(payload),
             keepalive: true,
             cache: 'no-store'
-          }).catch(() => void 0);
+          }).catch(() => { try { resolveMcp(); } catch {} });
         } catch {}
       }
 
