@@ -47,11 +47,11 @@ importers:
         version: 19.1.1(react@19.1.1)
     devDependencies:
       '@browser-echo/mcp':
-        specifier: workspace:*
-        version: link:../../packages/mcp
+        specifier: https://pkg.pr.new/instructa/browser-echo/@browser-echo/mcp@f6031a3
+        version: https://pkg.pr.new/instructa/browser-echo/@browser-echo/mcp@f6031a3(express@5.1.0)
       '@browser-echo/next':
-        specifier: workspace:*
-        version: link:../../packages/next
+        specifier: https://pkg.pr.new/instructa/browser-echo/@browser-echo/next@f6031a3
+        version: https://pkg.pr.new/instructa/browser-echo/@browser-echo/next@f6031a3(next@15.4.7(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       '@eslint/eslintrc':
         specifier: ^3
         version: 3.3.1
@@ -93,8 +93,8 @@ importers:
         version: 4.5.1(vue@3.5.18(typescript@5.9.2))
     devDependencies:
       '@browser-echo/nuxt':
-        specifier: workspace:*
-        version: link:../../packages/nuxt
+        specifier: https://pkg.pr.new/instructa/browser-echo/@browser-echo/nuxt@f6031a3
+        version: https://pkg.pr.new/instructa/browser-echo/@browser-echo/nuxt@f6031a3(@nuxt/kit@4.0.3(magicast@0.3.5))
 
   example/react-vite-app:
     dependencies:
@@ -106,8 +106,8 @@ importers:
         version: 19.1.1(react@19.1.1)
     devDependencies:
       '@browser-echo/vite':
-        specifier: workspace:*
-        version: link:../../packages/vite
+        specifier: https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@f6031a3
+        version: https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@f6031a3(vite@7.1.3(@types/node@24.3.0)(jiti@2.5.1)(lightningcss@1.30.1)(terser@5.43.1)(tsx@4.20.4)(yaml@2.8.1))
       '@eslint/js':
         specifier: ^9.17.0
         version: 9.33.0
@@ -164,8 +164,8 @@ importers:
         version: 4.0.17
     devDependencies:
       '@browser-echo/vite':
-        specifier: workspace:*
-        version: link:../../packages/vite
+        specifier: https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@f6031a3
+        version: https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@f6031a3(vite@7.1.3(@types/node@24.3.0)(jiti@2.5.1)(lightningcss@1.30.1)(terser@5.43.1)(tsx@4.20.4)(yaml@2.8.1))
       '@types/node':
         specifier: ^24.3.0
         version: 24.3.0
@@ -204,8 +204,8 @@ importers:
         version: 3.5.18(typescript@5.9.2)
     devDependencies:
       '@browser-echo/vite':
-        specifier: workspace:*
-        version: link:../../packages/vite
+        specifier: https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@f6031a3
+        version: https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@f6031a3(vite@7.1.3(@types/node@24.3.0)(jiti@2.5.1)(lightningcss@1.30.1)(terser@5.43.1)(tsx@4.20.4)(yaml@2.8.1))
       '@vitejs/plugin-vue':
         specifier: ^6.0.1
         version: 6.0.1(vite@7.1.3(@types/node@24.3.0)(jiti@2.5.1)(lightningcss@1.30.1)(terser@5.43.1)(tsx@4.20.4)(yaml@2.8.1))(vue@3.5.18(typescript@5.9.2))
@@ -517,6 +517,38 @@ packages:
   '@babel/types@7.28.2':
     resolution: {integrity: sha512-ruv7Ae4J5dUYULmeXw1gmb7rYRz57OWCPM57pHojnLq/3Z1CK2lNSLTCVjxVk1F/TZHwOZZrOWi0ur95BbLxNQ==}
     engines: {node: '>=6.9.0'}
+
+  '@browser-echo/core@https://pkg.pr.new/instructa/browser-echo/@browser-echo/core@f6031a31daf121ca0e1c596404e1cb99bb15407c':
+    resolution: {tarball: https://pkg.pr.new/instructa/browser-echo/@browser-echo/core@f6031a31daf121ca0e1c596404e1cb99bb15407c}
+    version: 0.0.6
+
+  '@browser-echo/mcp@https://pkg.pr.new/instructa/browser-echo/@browser-echo/mcp@f6031a3':
+    resolution: {tarball: https://pkg.pr.new/instructa/browser-echo/@browser-echo/mcp@f6031a3}
+    version: 0.0.1
+    hasBin: true
+    peerDependencies:
+      express: ^4 || ^5
+
+  '@browser-echo/next@https://pkg.pr.new/instructa/browser-echo/@browser-echo/next@f6031a3':
+    resolution: {tarball: https://pkg.pr.new/instructa/browser-echo/@browser-echo/next@f6031a3}
+    version: 0.0.6
+    hasBin: true
+    peerDependencies:
+      next: '>=13.4.0'
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@browser-echo/nuxt@https://pkg.pr.new/instructa/browser-echo/@browser-echo/nuxt@f6031a3':
+    resolution: {tarball: https://pkg.pr.new/instructa/browser-echo/@browser-echo/nuxt@f6031a3}
+    version: 0.0.6
+    peerDependencies:
+      '@nuxt/kit': '>=3.11.0'
+
+  '@browser-echo/vite@https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@f6031a3':
+    resolution: {tarball: https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@f6031a3}
+    version: 0.0.6
+    peerDependencies:
+      vite: '>=4.0.0'
 
   '@cloudflare/kv-asset-handler@0.4.0':
     resolution: {integrity: sha512-+tv3z+SPp+gqTIcImN9o0hqE9xyfQjI1XD9pL6NuKjua9B1y7mNYv0S9cP+QEbA4ppVgGZEmKOvHX5G5Ei1CVA==}
@@ -7290,6 +7322,36 @@ snapshots:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.27.1
 
+  '@browser-echo/core@https://pkg.pr.new/instructa/browser-echo/@browser-echo/core@f6031a31daf121ca0e1c596404e1cb99bb15407c': {}
+
+  '@browser-echo/mcp@https://pkg.pr.new/instructa/browser-echo/@browser-echo/mcp@f6031a3(express@5.1.0)':
+    dependencies:
+      '@modelcontextprotocol/sdk': 1.17.2
+      citty: 0.1.6
+      express: 5.1.0
+      h3: 1.15.4
+      zod: 4.0.17
+    transitivePeerDependencies:
+      - supports-color
+
+  '@browser-echo/next@https://pkg.pr.new/instructa/browser-echo/@browser-echo/next@f6031a3(next@15.4.7(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(react-dom@19.1.1(react@19.1.1))(react@19.1.1)':
+    dependencies:
+      '@browser-echo/core': https://pkg.pr.new/instructa/browser-echo/@browser-echo/core@f6031a31daf121ca0e1c596404e1cb99bb15407c
+      next: 15.4.7(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
+      react: 19.1.1
+      react-dom: 19.1.1(react@19.1.1)
+
+  '@browser-echo/nuxt@https://pkg.pr.new/instructa/browser-echo/@browser-echo/nuxt@f6031a3(@nuxt/kit@4.0.3(magicast@0.3.5))':
+    dependencies:
+      '@browser-echo/core': https://pkg.pr.new/instructa/browser-echo/@browser-echo/core@f6031a31daf121ca0e1c596404e1cb99bb15407c
+      '@nuxt/kit': 4.0.3(magicast@0.3.5)
+
+  '@browser-echo/vite@https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@f6031a3(vite@7.1.3(@types/node@24.3.0)(jiti@2.5.1)(lightningcss@1.30.1)(terser@5.43.1)(tsx@4.20.4)(yaml@2.8.1))':
+    dependencies:
+      '@browser-echo/core': https://pkg.pr.new/instructa/browser-echo/@browser-echo/core@f6031a31daf121ca0e1c596404e1cb99bb15407c
+      ansis: 3.17.0
+      vite: 7.1.3(@types/node@24.3.0)(jiti@2.5.1)(lightningcss@1.30.1)(terser@5.43.1)(tsx@4.20.4)(yaml@2.8.1)
+
   '@cloudflare/kv-asset-handler@0.4.0':
     dependencies:
       mime: 3.0.0
@@ -10806,8 +10868,8 @@ snapshots:
       '@typescript-eslint/parser': 8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2)
       eslint: 9.33.0(jiti@2.5.1)
       eslint-import-resolver-node: 0.3.9
-      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2))(eslint@9.33.0(jiti@2.5.1)))(eslint@9.33.0(jiti@2.5.1))
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2))(eslint@9.33.0(jiti@2.5.1)))(eslint@9.33.0(jiti@2.5.1)))(eslint@9.33.0(jiti@2.5.1))
+      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0)(eslint@9.33.0(jiti@2.5.1))
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2))(eslint-import-resolver-typescript@3.10.1)(eslint@9.33.0(jiti@2.5.1))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@9.33.0(jiti@2.5.1))
       eslint-plugin-react: 7.37.5(eslint@9.33.0(jiti@2.5.1))
       eslint-plugin-react-hooks: 5.2.0(eslint@9.33.0(jiti@2.5.1))
@@ -10826,7 +10888,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2))(eslint@9.33.0(jiti@2.5.1)))(eslint@9.33.0(jiti@2.5.1)):
+  eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0)(eslint@9.33.0(jiti@2.5.1)):
     dependencies:
       '@nolyfill/is-core-module': 1.0.39
       debug: 4.4.1
@@ -10837,22 +10899,22 @@ snapshots:
       tinyglobby: 0.2.14
       unrs-resolver: 1.11.1
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2))(eslint@9.33.0(jiti@2.5.1)))(eslint@9.33.0(jiti@2.5.1)))(eslint@9.33.0(jiti@2.5.1))
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2))(eslint-import-resolver-typescript@3.10.1)(eslint@9.33.0(jiti@2.5.1))
     transitivePeerDependencies:
       - supports-color
 
-  eslint-module-utils@2.12.1(@typescript-eslint/parser@8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2))(eslint@9.33.0(jiti@2.5.1)))(eslint@9.33.0(jiti@2.5.1)))(eslint@9.33.0(jiti@2.5.1)):
+  eslint-module-utils@2.12.1(@typescript-eslint/parser@8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1)(eslint@9.33.0(jiti@2.5.1)):
     dependencies:
       debug: 3.2.7
     optionalDependencies:
       '@typescript-eslint/parser': 8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2)
       eslint: 9.33.0(jiti@2.5.1)
       eslint-import-resolver-node: 0.3.9
-      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2))(eslint@9.33.0(jiti@2.5.1)))(eslint@9.33.0(jiti@2.5.1))
+      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0)(eslint@9.33.0(jiti@2.5.1))
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2))(eslint@9.33.0(jiti@2.5.1)))(eslint@9.33.0(jiti@2.5.1)))(eslint@9.33.0(jiti@2.5.1)):
+  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2))(eslint-import-resolver-typescript@3.10.1)(eslint@9.33.0(jiti@2.5.1)):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.1.9
@@ -10863,7 +10925,7 @@ snapshots:
       doctrine: 2.1.0
       eslint: 9.33.0(jiti@2.5.1)
       eslint-import-resolver-node: 0.3.9
-      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2))(eslint@9.33.0(jiti@2.5.1)))(eslint@9.33.0(jiti@2.5.1)))(eslint@9.33.0(jiti@2.5.1))
+      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1)(eslint@9.33.0(jiti@2.5.1))
       hasown: 2.0.2
       is-core-module: 2.16.1
       is-glob: 4.0.3

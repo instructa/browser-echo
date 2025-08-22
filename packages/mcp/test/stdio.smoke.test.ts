@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { McpTestClient } from './utils/mcpTestClient';
 
@@ -10,10 +10,12 @@ const __dirname = dirname(__filename);
 
 describe('@browser-echo/mcp stdio transport (smoke)', () => {
   let client: McpTestClient;
+  let workDir: string;
 
   beforeAll(async () => {
     const cli = join(__dirname, '..', 'bin', 'cli.mjs');
-    client = new McpTestClient({ cliEntryPoint: cli, env: { BROWSER_ECHO_INGEST_PORT: '0' } });
+    workDir = mkdtempSync(join(tmpdir(), 'be-smoke-'));
+    client = new McpTestClient({ cliEntryPoint: cli, env: { BROWSER_ECHO_INGEST_PORT: '0' }, cwd: workDir });
     await client.connect();
   }, 30_000);
 
@@ -32,7 +34,7 @@ describe('@browser-echo/mcp stdio transport (smoke)', () => {
 
   it('ingests logs via HTTP ingest and retrieves via get_logs', async () => {
     // Discover the actual ingest endpoint (ephemeral port in stdio mode)
-    const candidates = [ join(process.cwd(), '.browser-echo-mcp.json'), join(tmpdir(), 'browser-echo-mcp.json') ];
+    const candidates = [ join(workDir, '.browser-echo-mcp.json'), join(tmpdir(), 'browser-echo-mcp.json') ];
     // wait up to 2s for cwd discovery to appear to avoid race
     const start = Date.now();
     while (!existsSync(candidates[0]) && (Date.now() - start) < 2000) {
