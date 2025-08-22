@@ -223,7 +223,7 @@ export async function startHttpServer(
   await new Promise<void>((resolve) => nodeServer.listen(opts.port, opts.host, () => resolve()));
 
   // Advertise discovery so providers can auto-detect this server locally
-  await advertiseDiscovery(opts.host, opts.port, opts.logsRoute, { projectRoot: process.cwd(), scope: 'http' });
+  await advertiseDiscovery(opts.host, opts.port, opts.logsRoute, { projectRoot: process.env.BROWSER_ECHO_PROJECT_ROOT || process.cwd(), scope: 'http' });
 
   // eslint-disable-next-line no-console
   console.log(`MCP (Streamable HTTP) listening → http://${opts.host}:${opts.port}${opts.endpoint}`);
@@ -315,10 +315,10 @@ export async function startIngestOnlyServer(
     }
   }
 
-  // Only the primary (5179) should advertise to OS tmp to avoid discovery flapping
+  // Advertise discovery for stdio transport. By default, only write project-local discovery.
   const requestedPort = opts.port;
   const isAggregator = requestedPort !== 0 && actualPort === requestedPort;
-  await advertiseDiscovery(opts.host, actualPort, opts.logsRoute, { projectRoot: process.cwd(), scope: 'stdio', aggregator: isAggregator });
+  await advertiseDiscovery(opts.host, actualPort, opts.logsRoute, { projectRoot: process.env.BROWSER_ECHO_PROJECT_ROOT || process.cwd(), scope: 'stdio', aggregator: isAggregator });
 
   // eslint-disable-next-line no-console
   console.error(`Log ingest endpoint        → http://${opts.host}:${actualPort}${opts.logsRoute}`);
@@ -326,28 +326,49 @@ export async function startIngestOnlyServer(
 
 async function advertiseDiscovery(host: string, port: number, logsRoute: `/${string}`, meta?: { projectRoot?: string; token?: string; scope?: 'http' | 'stdio'; aggregator?: boolean }) {
   try {
-    const { writeFileSync } = await import('node:fs');
+    const { writeFileSync, chmodSync } = await import('node:fs');
     const { join } = await import('node:path');
     const { tmpdir } = await import('node:os');
 
     const baseUrl = `http://${host}:${port}`;
-    const payload = JSON.stringify({
+    const allowTmp = process.env.BROWSER_ECHO_ALLOW_TMP_DISCOVERY === '1';
+    const token = allowTmp ? (process.env.BROWSER_ECHO_DISCOVERY_TOKEN || randomUUID()) : undefined;
+    if (allowTmp) {
+      try { process.env.BROWSER_ECHO_DISCOVERY_TOKEN = token as string; } catch {}
+      try { process.env.BROWSER_ECHO_REQUIRE_TOKEN = process.env.BROWSER_ECHO_REQUIRE_TOKEN || '1'; } catch {}
+    }
+    const payloadLocal = JSON.stringify({
+      url: baseUrl,
+      routeLogs: logsRoute,
+      timestamp: Date.now(),
+      pid: typeof process !== 'undefined' ? process.pid : undefined,
+      projectRoot: meta?.projectRoot || process.cwd()
+    });
+    const payloadTmp = JSON.stringify({
       url: baseUrl,
       routeLogs: logsRoute,
       timestamp: Date.now(),
       pid: typeof process !== 'undefined' ? process.pid : undefined,
       projectRoot: meta?.projectRoot || process.cwd(),
-      token: meta?.token || undefined
+      token
     });
 
-    const files = meta?.scope === 'http'
-      ? [ join(tmpdir(), 'browser-echo-mcp.json') ]
-      : meta?.aggregator
-        ? [ join(process.cwd(), '.browser-echo-mcp.json'), join(tmpdir(), 'browser-echo-mcp.json') ]
-        : [ join(process.cwd(), '.browser-echo-mcp.json') ];
+    let files: string[] = [];
+    if (meta?.scope === 'http') {
+      // HTTP transport: write project-local; mirror to tmp only when explicitly enabled
+      files = [ join(process.cwd(), '.browser-echo-mcp.json') ];
+      if (allowTmp) files.push(join(tmpdir(), 'browser-echo-mcp.json'));
+    } else {
+      // STDIO transport writes only to project-local by default; optionally mirror to tmp when explicitly enabled
+      files = [ join(process.cwd(), '.browser-echo-mcp.json') ];
+      if (allowTmp) files.push(join(tmpdir(), 'browser-echo-mcp.json'));
+    }
 
     for (const f of files) {
-      try { writeFileSync(f, payload); } catch {}
+      const isTmp = f === join(tmpdir(), 'browser-echo-mcp.json');
+      try { writeFileSync(f, isTmp ? payloadTmp : payloadLocal); } catch {}
+      // Restrict permissions when writing token-bearing tmp file
+      if (isTmp) { try { chmodSync(f, 0o600); } catch {} }
     }
   } catch {
     // best-effort only

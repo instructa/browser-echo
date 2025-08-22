@@ -1,8 +1,8 @@
 // Avoid exporting Vite types to prevent cross-version type mismatches in consumers
 import ansis from 'ansis';
 import type { BrowserLogLevel } from '@browser-echo/core';
-import { mkdirSync, appendFileSync, existsSync, readFileSync, unlinkSync } from 'node:fs';
-import { dirname, join as joinPath } from 'node:path';
+import { mkdirSync, appendFileSync, existsSync, readFileSync, unlinkSync, realpathSync } from 'node:fs';
+import { dirname, join as joinPath, relative as relativePath, isAbsolute as isAbsolutePath, sep as pathSep } from 'node:path';
 import { tmpdir } from 'node:os';
 
 export interface BrowserLogsToTerminalOptions {
@@ -107,10 +107,12 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
   const logFilePath = joinPath(options.fileLog.dir, `dev-${sessionStamp}.log`);
   if (options.fileLog.enabled) { try { mkdirSync(dirname(logFilePath), { recursive: true }); } catch {} }
 
-  // Dynamic MCP ingest resolution (explicit → env → discovery file → port scan)
+  // Dynamic MCP ingest resolution (explicit → env → discovery file → optional port scan)
   let resolvedBase = options.mcp.url ? options.mcp.url.replace(/\/$/, '') : '';
   let resolvedIngest = resolvedBase ? `${resolvedBase}${options.mcp.routeLogs}` : '';
   let lastAnnouncement = '';
+  let resolvedToken = '';
+  let resolvedSource = '' as 'explicit' | 'env' | 'local' | 'tmp' | 'scan' | '';
 
   const refreshMs = Math.max(1_000, Number(options.discoveryRefreshMs || 30_000) | 0);
 
@@ -131,7 +133,7 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
     } catch { return false; }
   }
 
-  function readDiscoveryFile(): { url: string; routeLogs?: string; ts?: number; token?: string; pid?: number } | null {
+  function readDiscoveryFile(): { url: string; routeLogs?: string; ts?: number; token?: string; pid?: number; projectRoot?: string; sourcePath: string } | null {
     try {
       const candidates = [
         joinPath(process.cwd(), '.browser-echo-mcp.json'),
@@ -147,11 +149,24 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
           const ts = typeof data?.timestamp === 'number' ? data.timestamp : undefined;
           const token = data?.token ? String(data.token) : undefined;
           const pid = typeof data?.pid === 'number' ? data.pid : undefined;
-          if (url) return { url, routeLogs, ts, token, pid };
+          const projectRoot = data?.projectRoot ? String(data.projectRoot) : undefined;
+          if (url) return { url, routeLogs, ts, token, pid, projectRoot, sourcePath: p };
         } catch {}
       }
     } catch {}
     return null;
+  }
+
+  function isInsideProject(root: string | undefined, cwd: string): boolean {
+    if (!root) return true;
+    try {
+      const realRoot = realpathSync(root);
+      const realCwd = realpathSync(cwd);
+      const rel = relativePath(realRoot, realCwd);
+      return rel === '' || (!rel.startsWith('..' + pathSep) && !isAbsolutePath(rel));
+    } catch {
+      return false;
+    }
   }
 
   async function resolveMcp() {
@@ -162,16 +177,24 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
       const base = explicit.replace(/\/$/, '');
       resolvedBase = base;
       resolvedIngest = `${base}${options.mcp.routeLogs}`;
+      resolvedToken = '';
+      resolvedSource = process.env.BROWSER_ECHO_MCP_URL ? 'env' : 'explicit';
       announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
       return;
     }
-    // 2) Discovery file (fresh within 60s)
+    // 2) Discovery file (prefer local; tmp is only trusted if projectRoot matches)
     const disc = readDiscoveryFile();
     if (disc && disc.url) {
-      const ageOk = !disc.ts || (Date.now() - Number(disc.ts)) < 60_000;
-      if (ageOk) {
-        const base = String(disc.url).replace(/\/$/, '');
-        const routeLogs = (disc.routeLogs as `/${string}`) || options.mcp.routeLogs;
+      const base = String(disc.url).replace(/\/$/, '');
+      const routeLogs = (disc.routeLogs as `/${string}`) || options.mcp.routeLogs;
+      // Determine source type based on actual path
+      const tmpPath = joinPath(tmpdir(), 'browser-echo-mcp.json');
+      const fromTmp = disc.sourcePath === tmpPath;
+      const currentCwd = process.cwd();
+      const matchesProject = isInsideProject(disc.projectRoot, currentCwd);
+      if (!matchesProject && fromTmp) {
+        announce(`${options.tag} ignoring tmp discovery due to project mismatch`);
+      } else {
         // Validate aliveness: prefer health ping; optionally check PID
         const healthy = await tryPingHealth(base, 300);
         let pidOk = true;
@@ -179,31 +202,39 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
         if (healthy || pidOk) {
           resolvedBase = base;
           resolvedIngest = `${base}${routeLogs}`;
-          announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
+          resolvedToken = disc.token || '';
+          resolvedSource = fromTmp ? 'tmp' : 'local';
+          announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest} (source: ${resolvedSource})`);
           return;
         }
-        // purge stale tmp discovery to speed up re-discovery
-        try { const stale = joinPath(tmpdir(), 'browser-echo-mcp.json'); if (existsSync(stale)) unlinkSync(stale); } catch {}
+        // If unhealthy, do not port-scan by default
       }
     }
-    // 3) Port scan common ports
-    for (const port of options.discoveryPorts || []) {
-      for (const host of [`http://127.0.0.1:${port}`, `http://localhost:${port}`]) {
-        if (await tryPingHealth(host)) {
-          resolvedBase = host;
-          resolvedIngest = `${host}${options.mcp.routeLogs}`;
-          announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
-          return;
+    // 3) Port scan is disabled by default for isolation; enable only if explicitly opted-in
+    const allowScan = process.env.BROWSER_ECHO_ALLOW_PORT_SCAN === '1';
+    if (allowScan) {
+      for (const port of options.discoveryPorts || []) {
+        for (const host of [`http://127.0.0.1:${port}`, `http://localhost:${port}`]) {
+          if (await tryPingHealth(host)) {
+            resolvedBase = host;
+            resolvedIngest = `${host}${options.mcp.routeLogs}`;
+            resolvedToken = '';
+            resolvedSource = 'scan';
+            announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
+            return;
+          }
         }
       }
     }
-    // 4) Not found
+    // 4) Not found or unhealthy
     if (resolvedIngest) {
       // lost connection → inform once
       announce(`${options.tag} no MCP detected; logging locally. To forward, set BROWSER_ECHO_MCP_URL or start MCP.`);
     }
     resolvedBase = '';
     resolvedIngest = '';
+    resolvedToken = '';
+    resolvedSource = '';
   }
 
   // Kick off periodic discovery
@@ -228,7 +259,7 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
           // do not await
           fetch(targetIngest, {
             method: 'POST',
-            headers: { 'content-type': 'application/json', ...options.mcp.headers },
+            headers: { 'content-type': 'application/json', ...options.mcp.headers, ...(resolvedToken ? { 'x-be-token': resolvedToken } : {}) },
             body: JSON.stringify(payload),
             keepalive: true,
             cache: 'no-store'

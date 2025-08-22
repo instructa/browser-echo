@@ -186,6 +186,16 @@ browserEcho({
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Force suppress terminal output
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=0` — Force show terminal output
 
+#### Discovery and Isolation (Advanced)
+
+- `BROWSER_ECHO_ALLOW_PORT_SCAN=1` — Opt-in to port scanning when no discovery file or explicit URL is found (default: disabled)
+- `BROWSER_ECHO_ALLOW_TMP_DISCOVERY=1` — Opt-in to writing tmp discovery file for cross-process discovery; generates a token and enforces it (default: disabled)
+- `BROWSER_ECHO_PROJECT_ROOT=/abs/path` — Explicit project root used by the MCP server when writing discovery metadata; ensures correct scoping
+
+Notes:
+- By default, the plugin only trusts project-local discovery files (at `.browser-echo-mcp.json`). Tmp discovery is ignored unless the `projectRoot` in the file matches the current project.
+- When `BROWSER_ECHO_ALLOW_TMP_DISCOVERY=1` is set on the MCP server, a token is written to the tmp discovery file and enforced via the `x-be-token` header.
+
 ## File Logging (Vite-only feature)
 
 Enable optional file logging to write browser logs to disk:

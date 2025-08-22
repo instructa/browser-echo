@@ -30,10 +30,13 @@ function run(command: string, cwd: string) {
 function findTargets(): string[] {
   const patterns = [
     'node_modules',
+    'pnpm-lock.yaml',
     'packages/*/dist',
     'packages/*/node_modules',
+    'packages/*/pnpm-lock.yaml',
     'example/*/dist',
     'example/*/node_modules',
+    'example/*/pnpm-lock.yaml',
     'example/*/.nuxt',
     'example/*/.next',
     'example/*/.tanstack',
