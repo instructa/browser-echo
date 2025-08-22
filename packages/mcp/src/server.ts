@@ -61,10 +61,10 @@ export async function startServer(
 
     // Always bring up an ingest-only HTTP endpoint so clients/frameworks can POST logs
     const host = options.host || '127.0.0.1';
-    // Use env override if provided, otherwise let OS pick an ephemeral port
+    // Prefer stable 5179 for discovery; allow override via options/env; fallback handled in startIngestOnlyServer
     const envIngest = process.env.BROWSER_ECHO_INGEST_PORT;
-    const requested = Number(envIngest || 0) | 0;
-    const port = requested > 0 ? requested : 0;
+    const preferred = (options.port ?? (envIngest ? Number(envIngest) | 0 : 5179)) | 0;
+    const port = preferred > 0 ? preferred : 5179;
     const logsRoute = options.logsRoute || '/__client-logs';
     await startIngestOnlyServer(store, { host, port, logsRoute });
 
@@ -251,34 +251,80 @@ export async function startIngestOnlyServer(
 
   app.use(router);
 
-  const nodeServer = createNodeServer(toNodeListener(app));
+  function configureNodeServer(srv: any) {
+    try {
+      srv.requestTimeout = 0;
+      srv.headersTimeout = 0;
+      typeof srv.setTimeout === 'function' && srv.setTimeout(0);
+      srv.on('connection', (socket: any) => {
+        try {
+          socket.setKeepAlive?.(true, 60_000);
+          socket.setNoDelay?.(true);
+        } catch {}
+      });
+    } catch {}
+  }
 
-  try {
-    nodeServer.requestTimeout = 0;
-    nodeServer.headersTimeout = 0;
-    typeof nodeServer.setTimeout === 'function' && nodeServer.setTimeout(0);
-    nodeServer.on('connection', (socket: any) => {
+  function listenWithResult(srv: any, host: string, port: number): Promise<number> {
+    return new Promise<number>((resolve, reject) => {
+      const onListening = () => {
+        try {
+          const addr = srv.address();
+          const actual = addr && typeof addr === 'object' && 'port' in addr ? (addr.port as number) : port;
+          cleanup();
+          resolve(actual);
+        } catch (e) {
+          cleanup();
+          reject(e);
+        }
+      };
+      const onError = (err: any) => { cleanup(); reject(err); };
+      const cleanup = () => {
+        try { srv.off?.('listening', onListening); } catch {}
+        try { srv.off?.('error', onError); } catch {}
+        try { srv.removeListener?.('listening', onListening); } catch {}
+        try { srv.removeListener?.('error', onError); } catch {}
+      };
       try {
-        socket.setKeepAlive?.(true, 60_000);
-        socket.setNoDelay?.(true);
-      } catch {}
+        srv.once('listening', onListening);
+        srv.once('error', onError);
+        srv.listen(port, host);
+      } catch (e) {
+        cleanup();
+        reject(e);
+      }
     });
-  } catch {}
+  }
 
-  await new Promise<void>((resolve) => nodeServer.listen(opts.port, opts.host, () => resolve()));
+  // Prefer requested port (usually 5179); fall back to ephemeral if it's taken
+  let nodeServer = createNodeServer(toNodeListener(app));
+  configureNodeServer(nodeServer);
 
-  // Determine the actual port assigned (when listening on port 0)
-  const addr = nodeServer.address() as any;
-  const actualPort = (addr && typeof addr === 'object' && 'port' in addr) ? (addr.port as number) : opts.port;
+  let actualPort: number;
+  try {
+    actualPort = await listenWithResult(nodeServer, opts.host, opts.port);
+  } catch (err: any) {
+    const isAddrInUse = err && (err.code === 'EADDRINUSE' || String(err.message || '').includes('EADDRINUSE'));
+    if (isAddrInUse && opts.port !== 0) {
+      try { nodeServer.close?.(); } catch {}
+      nodeServer = createNodeServer(toNodeListener(app));
+      configureNodeServer(nodeServer);
+      actualPort = await listenWithResult(nodeServer, opts.host, 0);
+    } else {
+      throw err;
+    }
+  }
 
-  // Advertise discovery for tooling that wants to auto-detect the ingest endpoint
-  await advertiseDiscovery(opts.host, actualPort, opts.logsRoute, { projectRoot: process.cwd(), scope: 'stdio' });
+  // Only the primary (5179) should advertise to OS tmp to avoid discovery flapping
+  const requestedPort = opts.port;
+  const isAggregator = requestedPort !== 0 && actualPort === requestedPort;
+  await advertiseDiscovery(opts.host, actualPort, opts.logsRoute, { projectRoot: process.cwd(), scope: 'stdio', aggregator: isAggregator });
 
   // eslint-disable-next-line no-console
   console.error(`Log ingest endpoint        → http://${opts.host}:${actualPort}${opts.logsRoute}`);
 }
 
-async function advertiseDiscovery(host: string, port: number, logsRoute: `/${string}`, meta?: { projectRoot?: string; token?: string; scope?: 'http' | 'stdio' }) {
+async function advertiseDiscovery(host: string, port: number, logsRoute: `/${string}`, meta?: { projectRoot?: string; token?: string; scope?: 'http' | 'stdio'; aggregator?: boolean }) {
   try {
     const { writeFileSync } = await import('node:fs');
     const { join } = await import('node:path');
@@ -296,7 +342,9 @@ async function advertiseDiscovery(host: string, port: number, logsRoute: `/${str
 
     const files = meta?.scope === 'http'
       ? [ join(tmpdir(), 'browser-echo-mcp.json') ]
-      : [ join(process.cwd(), '.browser-echo-mcp.json'), join(tmpdir(), 'browser-echo-mcp.json') ];
+      : meta?.aggregator
+        ? [ join(process.cwd(), '.browser-echo-mcp.json'), join(tmpdir(), 'browser-echo-mcp.json') ]
+        : [ join(process.cwd(), '.browser-echo-mcp.json') ];
 
     for (const f of files) {
       try { writeFileSync(f, payload); } catch {}
