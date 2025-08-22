@@ -18,7 +18,7 @@
     "zod": "^4.0.17"
   },
   "devDependencies": {
-    "@browser-echo/vite": "https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@f3039cc",
+    "@browser-echo/vite": "workspace:*",
     "@types/node": "^24.3.0",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",

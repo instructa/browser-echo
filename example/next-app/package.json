@@ -14,8 +14,8 @@
     "react-dom": "19.1.1"
   },
   "devDependencies": {
-    "@browser-echo/mcp": "https://pkg.pr.new/instructa/browser-echo/@browser-echo/mcp@f3039cc",
-    "@browser-echo/next": "https://pkg.pr.new/instructa/browser-echo/@browser-echo/next@f3039cc",
+    "@browser-echo/mcp": "workspace:*",
+    "@browser-echo/next": "workspace:*",
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4.1.12",
     "@types/node": "^24.3.0",
