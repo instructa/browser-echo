@@ -191,7 +191,14 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
       const tmpPath = joinPath(tmpdir(), 'browser-echo-mcp.json');
       const fromTmp = disc.sourcePath === tmpPath;
       const currentCwd = process.cwd();
-      const matchesProject = isInsideProject(disc.projectRoot, currentCwd);
+      let matchesProject = isInsideProject(disc.projectRoot, currentCwd);
+      if (fromTmp) {
+        try {
+          matchesProject = !!disc.projectRoot && realpathSync(String(disc.projectRoot)) === realpathSync(currentCwd);
+        } catch {
+          matchesProject = false;
+        }
+      }
       if (!matchesProject && fromTmp) {
         announce(`${options.tag} ignoring tmp discovery due to project mismatch`);
       } else {
@@ -245,7 +252,9 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
 
   server.middlewares.use(options.route, (req, res, next) => {
     if (req.method !== 'POST') return next();
-    collectBody(req).then((raw) => {
+    collectBody(req).then(async (raw) => {
+      // Re-resolve discovery on each POST to avoid sticky routing during startup races
+      try { await resolveMcp(); } catch {}
       let payload: ClientPayload | null = null;
       try { payload = JSON.parse(raw.toString('utf-8')); }
       catch { res.statusCode = 400; res.end('invalid JSON'); return; }
