@@ -75,11 +75,7 @@ function color(level: BrowserLogLevel, msg: string) {
 }
 function dim(s: string) { return c.dim + s + c.reset; }
 
-let __mcpProjectCache: { url: string; routeLogs?: `/${string}` } | null = null;
-
 async function __resolveMcpFromProject(): Promise<{ url: string; routeLogs?: `/${string}` }> {
-  // Only cache positive resolutions; always retry if unresolved/empty
-  if (__mcpProjectCache && __mcpProjectCache.url) return __mcpProjectCache;
   try {
     const { readFileSync, existsSync } = await import('node:fs');
     const { join } = await import('node:path');
@@ -91,13 +87,11 @@ async function __resolveMcpFromProject(): Promise<{ url: string; routeLogs?: `/$
       const url = rawUrl.replace(/\/$/, '').replace(/\/mcp$/i, '');
       const routeLogs = (data?.route ? String(data.route) : '/__client-logs') as `/${string}`;
       if (url && await __pingHealth(`${url}/health`, 250)) {
-        __mcpProjectCache = { url, routeLogs };
-        return __mcpProjectCache;
+        return { url, routeLogs };
       }
     }
   } catch {}
-  __mcpProjectCache = { url: '' } as any;
-  return __mcpProjectCache;
+  return { url: '' } as any;
 }
 
 async function __pingHealth(url: string, timeoutMs: number): Promise<boolean> {

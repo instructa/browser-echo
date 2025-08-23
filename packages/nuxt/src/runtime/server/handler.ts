@@ -76,11 +76,7 @@ function color(level: Level, msg: string) {
 }
 function dim(s: string) { return c.dim + s + c.reset; }
 
-let __mcpProjectCacheNuxt: { url: string; routeLogs?: `/${string}` } | null = null;
-
 async function __resolveMcpFromProjectNuxt(): Promise<{ url: string; routeLogs?: `/${string}` }> {
-  // Only cache positive resolutions; always retry if unresolved/empty
-  if (__mcpProjectCacheNuxt && __mcpProjectCacheNuxt.url) return __mcpProjectCacheNuxt;
   try {
     const { readFileSync, existsSync } = await import('node:fs');
     const { join } = await import('node:path');
@@ -91,12 +87,11 @@ async function __resolveMcpFromProjectNuxt(): Promise<{ url: string; routeLogs?:
       const url = (data?.url ? String(data.url) : '').replace(/\/$/, '').replace(/\/mcp$/i, '');
       const routeLogs = (data?.route ? String(data.route) as `/${string}` : '/__client-logs');
       if (url && await __pingHealthNuxt(`${url}/health`, 300)) {
-        __mcpProjectCacheNuxt = { url, routeLogs };
-        return __mcpProjectCacheNuxt;
+        return { url, routeLogs };
       }
     }
   } catch {}
-  __mcpProjectCacheNuxt = { url: '' } as any; return __mcpProjectCacheNuxt;
+  return { url: '' } as any;
 }
 
 async function __pingHealthNuxt(url: string, timeoutMs: number): Promise<boolean> {

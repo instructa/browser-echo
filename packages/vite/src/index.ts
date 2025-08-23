@@ -1,7 +1,7 @@
 // Avoid exporting Vite types to prevent cross-version type mismatches in consumers
 import ansis from 'ansis';
 import type { BrowserLogLevel } from '@browser-echo/core';
-import { mkdirSync, appendFileSync, existsSync, readFileSync, watch as fsWatch } from 'node:fs';
+import { mkdirSync, appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join as joinPath, dirname } from 'node:path';
 
 export interface BrowserLogsToTerminalOptions {
@@ -162,17 +162,8 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
     resolvedIngest = '';
   }
 
-  // Resolve once at startup and watch for project json changes to re-resolve
+  // Resolve once at startup
   resolveOnce();
-  try {
-    const cfgPath = joinPath(process.cwd(), '.browser-echo-mcp.json');
-    if (existsSync(cfgPath)) {
-      try { fsWatch(cfgPath, { persistent: false }, () => { try { resolveOnce(); } catch {} }); } catch {}
-    } else {
-      const parent = process.cwd();
-      try { fsWatch(parent, { persistent: false }, (_evt: string, file?: string) => { if (String(file || '') === '.browser-echo-mcp.json') { try { resolveOnce(); } catch {} } }); } catch {}
-    }
-  } catch {}
 
   server.middlewares.use(options.route, (req: import('http').IncomingMessage, res: import('http').ServerResponse, next: Function) => {
     if (req.method !== 'POST') return next();
