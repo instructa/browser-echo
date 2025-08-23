@@ -206,8 +206,9 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
         return;
       }
     }
-    // 3) Try default port 5179 in development (last resort)
-    if (process.env.NODE_ENV === 'development') {
+    // 3) Try default port 5179 in development (last resort, gated)
+    const allowScan = process.env.BROWSER_ECHO_ALLOW_PORT_SCAN === '1';
+    if (process.env.NODE_ENV === 'development' && allowScan) {
       for (const host of ['http://127.0.0.1:5179', 'http://localhost:5179']) {
         if (await tryPingHealth(host)) {
           resolvedBase = host;

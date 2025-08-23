@@ -27,8 +27,8 @@ export default defineEventHandler(async (event) => {
   if (!mcp.url && process.env.NODE_ENV === 'development') {
     mcp = await __resolveMcpUrlNuxt();
   }
-  if (!mcp.url && process.env.NODE_ENV === 'development') {
-    // Try default port 5179 only as a last resort
+  if (!mcp.url && process.env.NODE_ENV === 'development' && process.env.BROWSER_ECHO_ALLOW_PORT_SCAN === '1') {
+    // Try default port 5179 only as a last resort (gated)
     const candidates = ['http://127.0.0.1:5179', 'http://localhost:5179'];
     for (const base of candidates) {
       if (await __pingHealthNuxt(`${base}/health`, 300)) { mcp = { url: base }; break; }

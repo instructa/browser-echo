@@ -85,7 +85,9 @@ it('dev probe tries 127.0.0.1 then localhost', async () => {
   globalThis.fetch = fetchSpy as any;
 
   const oldEnv = process.env.NODE_ENV;
+  const oldScan = process.env.BROWSER_ECHO_ALLOW_PORT_SCAN;
   process.env.NODE_ENV = 'development';
+  process.env.BROWSER_ECHO_ALLOW_PORT_SCAN = '1';
   const { server, logs, handlers } = makeServerMock();
   const p = browserEcho();
   (p as any).configureServer(server);
@@ -109,6 +111,7 @@ it('dev probe tries 127.0.0.1 then localhost', async () => {
 
   globalThis.fetch = REAL_FETCH;
   process.env.NODE_ENV = oldEnv;
+  process.env.BROWSER_ECHO_ALLOW_PORT_SCAN = oldScan;
 });
 
 it('ignores malformed discovery file and continues printing', async () => {

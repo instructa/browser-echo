@@ -12,7 +12,7 @@
     "vue": "^3.5.18"
   },
   "devDependencies": {
-    "@browser-echo/vite": "https://pkg.pr.new/instructa/browser-echo/@browser-echo/vite@70c8792",
+    "@browser-echo/vite": "workspace:*",
     "@vitejs/plugin-vue": "^6.0.1",
     "typescript": "~5.9.2",
     "vite": "^7.1.3",
