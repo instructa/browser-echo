@@ -21,8 +21,8 @@ function makeServerMock() {
 
 const REAL_FETCH = globalThis.fetch as any;
 
-function writeTmpDiscovery(payload: any) {
-  const p = join(tmpdir(), 'browser-echo-mcp.json');
+function writeLocalDiscovery(payload: any) {
+  const p = join(process.cwd(), '.browser-echo-mcp.json');
   writeFileSync(p, JSON.stringify(payload));
   return p;
 }
@@ -38,22 +38,13 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = REAL_FETCH;
-  const p = join(tmpdir(), 'browser-echo-mcp.json');
-  try { if (existsSync(p)) unlinkSync(p); } catch {}
+  const pLocal = join(process.cwd(), '.browser-echo-mcp.json');
+  try { if (existsSync(pLocal)) unlinkSync(pLocal); } catch {}
 });
 
-describe('Isolation across projects (tmp discovery)', () => {
-  it('ignores tmp discovery when projectRoot mismatches current project', async () => {
-    // tmp discovery pointing elsewhere
-    writeTmpDiscovery({
-      url: 'http://127.0.0.1:59991',
-      routeLogs: '/__client-logs',
-      timestamp: Date.now(),
-      pid: 999999,
-      projectRoot: join(tmpdir(), 'some-other-project')
-    });
-
-    const fetchSpy = vi.fn(async () => ({ ok: true } as any));
+describe('Discovery behavior (local file + port 5179)', () => {
+  it('does not forward when no discovery and port 5179 is down', async () => {
+    const fetchSpy = vi.fn(async () => ({ ok: false } as any));
     globalThis.fetch = fetchSpy as any;
 
     const { server, logs, handlers } = makeServerMock();
@@ -76,21 +67,19 @@ describe('Isolation across projects (tmp discovery)', () => {
     fn(req, res, () => {});
     await done;
 
-    // Should NOT have forwarded (no fetch calls)
-    expect(fetchSpy).not.toHaveBeenCalled();
+    // Should NOT have forwarded (no fetch calls to ingest)
+    const calls = fetchSpy.mock.calls.map((c: any[]) => String(c[0]));
+    expect(calls.some((u: string) => u.includes('/__client-logs'))).toBe(false);
     // Terminal should have printed something
     expect(logs.length).toBeGreaterThan(0);
   });
 
-  it('honors tmp discovery when projectRoot matches and forwards with token', async () => {
-    const token = 't123';
-    writeTmpDiscovery({
+  it('honors local discovery and forwards', async () => {
+    writeLocalDiscovery({
       url: 'http://127.0.0.1:59992',
       routeLogs: '/__client-logs',
       timestamp: Date.now(),
-      pid: 999998,
-      projectRoot: process.cwd(),
-      token
+      pid: 999998
     });
 
     const fetchSpy = vi.fn(async (url: any) => {
@@ -119,13 +108,9 @@ describe('Isolation across projects (tmp discovery)', () => {
     fn(req, res, () => {});
     await done;
 
-    // Should have forwarded to tmp-discovered ingest
+    // Should have forwarded to discovered ingest
     const calls = fetchSpy.mock.calls.map((c: any[]) => String(c[0]));
     expect(calls.some((u: string) => u === 'http://127.0.0.1:59992/__client-logs')).toBe(true);
-    // And include token header
-    const forwardCall = fetchSpy.mock.calls.find((c: any[]) => String(c[0]) === 'http://127.0.0.1:59992/__client-logs');
-    const headers = forwardCall?.[1]?.headers || {};
-    expect(headers['x-be-token']).toBe(token);
     // Terminal should be suppressed (no direct log message with payload text)
     expect(logs.some(([, m]) => m.includes('hi fwd'))).toBe(false);
   });

@@ -288,8 +288,8 @@ Best for local development with AI assistants:
 
 In stdio mode:
 - MCP communication happens over **stdio** (no HTTP MCP endpoint)
-- An **HTTP ingest server** runs on an ephemeral port (127.0.0.1) for browsers to POST logs
-- The actual URL is written to `.browser-echo-mcp.json` in your project root and OS tmpdir
+- An **HTTP ingest server** runs on a local port (127.0.0.1) for browsers to POST logs
+- The actual URL is written to `.browser-echo-mcp.json` in your project root
 - Console output (stderr): `MCP (stdio) listening on stdio (ingest HTTP active)`
 
 ### HTTP Mode
@@ -398,10 +398,8 @@ publishLogEntry({
 
 - `BROWSER_ECHO_BUFFER_SIZE` — Max entries in memory (default: `1000`)
 - `BROWSER_ECHO_MCP_URL` — MCP server URL for framework forwarding (if set, frameworks bypass discovery)
-- `BROWSER_ECHO_INGEST_PORT` — Force a fixed ingest port in stdio mode (default: ephemeral)
-- `BROWSER_ECHO_ALLOW_TMP_DISCOVERY=1` — Opt-in to writing tmp discovery file; a token is generated and enforced via `x-be-token`
-- `BROWSER_ECHO_PROJECT_ROOT=/abs/path` — Explicit project root to embed in discovery metadata for correct scoping
-- `BROWSER_ECHO_ALLOW_PORT_SCAN=1` — Opt-in for the Vite plugin to use port scanning when discovery is unavailable
+- `BROWSER_ECHO_INGEST_PORT` — Force a fixed ingest port in stdio mode (default: 5179 preferred)
+<!-- Tmp discovery and multi-port scanning removed from defaults -->
 
 ---
 

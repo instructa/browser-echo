@@ -107,27 +107,20 @@ Nuxt automatically discovers and forwards logs to MCP servers. No configuration 
 
 The Nuxt server handler automatically detects MCP servers and forwards logs when available. When MCP is detected, terminal output is suppressed by default.
 
+Discovery order:
+1. `BROWSER_ECHO_MCP_URL` (normalized, trailing `/mcp` is stripped)
+2. Dev probe: `http://127.0.0.1:5179` then `http://localhost:5179`
+3. Project-local discovery file: `.browser-echo-mcp.json` (walks up parent directories)
+
 ### Environment Variables
 
-- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Set MCP server URL
+- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Set MCP server URL (base URL is derived automatically)
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Force suppress terminal output
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=0` — Force show terminal output even when MCP is active
 
 ### Disable MCP Discovery
 
-```ts
-// nuxt.config.ts
-export default defineNuxtConfig({
-  modules: ['@browser-echo/nuxt'],
-  
-  // Disable MCP discovery via environment
-  runtimeConfig: {
-    browserEcho: {
-      disableMcp: true // Custom flag to disable MCP in your handler
-    }
-  }
-});
-```
+Set `BROWSER_ECHO_MCP_URL` empty and avoid discovery by removing the module, or customize the handler if you need full control.
 
 ## How it works
 

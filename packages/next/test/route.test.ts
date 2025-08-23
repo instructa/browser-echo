@@ -1,4 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { tmpdir } from 'node:os';
 import { POST } from '../src/route';
 
 it('accepts payload and returns 204', async () => {
@@ -59,5 +62,162 @@ it('suppresses terminal when MCP URL set and no override', async () => {
   } finally {
     process.env.BROWSER_ECHO_MCP_URL = old;
     i.mockRestore(); w.mockRestore(); e.mockRestore();
+  }
+});
+
+it('normalizes MCP URL (strips /mcp) and forwards to ingest', async () => {
+  const REAL_FETCH = globalThis.fetch as any;
+  const calls: string[] = [];
+  globalThis.fetch = vi.fn(async (url: any) => {
+    const u = String(url); calls.push(u);
+    if (u.endsWith('/health')) return { ok: true } as any;
+    return { ok: true } as any;
+  }) as any;
+  const old = process.env.BROWSER_ECHO_MCP_URL;
+  process.env.BROWSER_ECHO_MCP_URL = 'http://localhost:5179/mcp';
+  try {
+    vi.resetModules();
+    const mod = await import('../src/route');
+    const req: any = { json: async () => ({ sessionId: 'beefcafe', entries: [{ level: 'info', text: 'x' }] }) };
+    const res: any = await mod.POST(req);
+    expect((res as any).status).toBe(204);
+    expect(calls.some((u) => u === 'http://localhost:5179/__client-logs')).toBe(true);
+    expect(calls.some((u) => u.includes('/mcp/__client-logs'))).toBe(false);
+  } finally {
+    process.env.BROWSER_ECHO_MCP_URL = old;
+    globalThis.fetch = REAL_FETCH;
+  }
+});
+
+it('falls back to localhost when 127.0.0.1:5179 is unhealthy', async () => {
+  const REAL_FETCH = globalThis.fetch as any;
+  globalThis.fetch = vi.fn(async () => ({ ok: true } as any)) as any;
+  const oldEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'development';
+  try {
+    vi.resetModules();
+    const mod = await import('../src/route');
+    const i = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const w = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const e = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const req: any = { json: async () => ({ sessionId: 'deadbabe', entries: [{ level: 'warn', text: 'y' }] }) };
+    const res: any = await mod.POST(req);
+    expect((res as any).status).toBe(204);
+    // Suppressed printing implies MCP was resolved
+    expect(i).not.toHaveBeenCalled();
+    expect(w).not.toHaveBeenCalled();
+    expect(e).not.toHaveBeenCalled();
+    i.mockRestore(); w.mockRestore(); e.mockRestore();
+  } finally {
+    process.env.NODE_ENV = oldEnv;
+    globalThis.fetch = REAL_FETCH;
+  }
+});
+
+it('walks up directories to find project-local discovery file', async () => {
+  const REAL_FETCH = globalThis.fetch as any;
+  globalThis.fetch = vi.fn(async () => ({ ok: true } as any)) as any;
+  const oldCwd = process.cwd();
+  const base = mkdtempSync(join(tmpdir(), 'be-next-walk-'));
+  const sub = join(base, 'a', 'b');
+  mkdirSync(sub, { recursive: true });
+  try {
+    writeFileSync(join(base, '.browser-echo-mcp.json'), JSON.stringify({ url: 'http://127.0.0.1:59998', routeLogs: '/__client-logs', timestamp: Date.now() }));
+    process.chdir(sub);
+    vi.resetModules();
+    const mod = await import('../src/route');
+    const i = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const w = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const e = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const req: any = { json: async () => ({ sessionId: 'walkbeef', entries: [{ level: 'error', text: 'z' }] }) };
+    const res: any = await mod.POST(req);
+    expect((res as any).status).toBe(204);
+    expect(i).not.toHaveBeenCalled();
+    expect(w).not.toHaveBeenCalled();
+    expect(e).not.toHaveBeenCalled();
+    i.mockRestore(); w.mockRestore(); e.mockRestore();
+  } finally {
+    process.chdir(oldCwd);
+    try { rmSync(base, { recursive: true, force: true }); } catch {}
+    globalThis.fetch = REAL_FETCH;
+  }
+});
+
+it('ignores malformed discovery file gracefully and keeps printing', async () => {
+  const oldCwd = process.cwd();
+  const base = mkdtempSync(join(tmpdir(), 'be-next-bad-'));
+  const sub = join(base, 'x', 'y');
+  mkdirSync(sub, { recursive: true });
+  const REAL_FETCH = globalThis.fetch as any;
+  const oldEnv = process.env.NODE_ENV;
+  const oldUrl = process.env.BROWSER_ECHO_MCP_URL;
+  process.env.NODE_ENV = 'development';
+  delete process.env.BROWSER_ECHO_MCP_URL;
+  globalThis.fetch = vi.fn(async (url: any) => {
+    const u = String(url);
+    if (u.endsWith('/health')) return { ok: false } as any;
+    return { ok: true } as any;
+  }) as any;
+  try {
+    writeFileSync(join(base, '.browser-echo-mcp.json'), 'not json {');
+    process.chdir(sub);
+    vi.resetModules();
+    const mod = await import('../src/route');
+    const i = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const w = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const e = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const req: any = { json: async () => ({ sessionId: 'racecafe', entries: [
+      { level: 'info', text: 'A' }, { level: 'warn', text: 'B' }, { level: 'error', text: 'C' }
+    ] }) };
+    const res: any = await mod.POST(req);
+    expect((res as any).status).toBe(204);
+    expect(i).toHaveBeenCalled();
+    expect(w).toHaveBeenCalled();
+    expect(e).toHaveBeenCalled();
+    i.mockRestore(); w.mockRestore(); e.mockRestore();
+  } finally {
+    process.chdir(oldCwd);
+    try { rmSync(base, { recursive: true, force: true }); } catch {}
+    process.env.NODE_ENV = oldEnv;
+    if (oldUrl) process.env.BROWSER_ECHO_MCP_URL = oldUrl; else delete process.env.BROWSER_ECHO_MCP_URL;
+    globalThis.fetch = REAL_FETCH;
+  }
+});
+
+it('recovers when fs read throws during discovery (race)', async () => {
+  const REAL_FETCH = globalThis.fetch as any;
+  const oldEnv = process.env.NODE_ENV;
+  const oldUrl = process.env.BROWSER_ECHO_MCP_URL;
+  process.env.NODE_ENV = 'development';
+  delete process.env.BROWSER_ECHO_MCP_URL;
+  globalThis.fetch = vi.fn(async (url: any) => ({ ok: false } as any)) as any; // no MCP found
+  try {
+    vi.resetModules();
+    vi.mock('node:fs', async () => {
+      const real: any = await vi.importActual('node:fs');
+      return {
+        ...real,
+        existsSync: () => true,
+        readFileSync: () => { throw new Error('race'); }
+      };
+    });
+    const mod = await import('../src/route');
+    const i = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const w = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const e = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const req: any = { json: async () => ({ sessionId: 'deadfeed', entries: [
+      { level: 'warn', text: 'B' }
+    ] }) };
+    const res: any = await mod.POST(req);
+    expect((res as any).status).toBe(204);
+    expect(i).not.toHaveBeenCalled();
+    expect(w).toHaveBeenCalled();
+    i.mockRestore(); w.mockRestore(); e.mockRestore();
+  } finally {
+    process.env.NODE_ENV = oldEnv;
+    if (oldUrl) process.env.BROWSER_ECHO_MCP_URL = oldUrl; else delete process.env.BROWSER_ECHO_MCP_URL;
+    globalThis.fetch = REAL_FETCH;
+    vi.resetModules();
+    vi.unmock('node:fs');
   }
 });

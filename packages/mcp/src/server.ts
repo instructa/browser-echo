@@ -324,52 +324,21 @@ export async function startIngestOnlyServer(
   console.error(`Log ingest endpoint        → http://${opts.host}:${actualPort}${opts.logsRoute}`);
 }
 
-async function advertiseDiscovery(host: string, port: number, logsRoute: `/${string}`, meta?: { projectRoot?: string; token?: string; scope?: 'http' | 'stdio'; aggregator?: boolean }) {
+async function advertiseDiscovery(host: string, port: number, logsRoute: `/${string}`, _meta?: { projectRoot?: string; token?: string; scope?: 'http' | 'stdio'; aggregator?: boolean }) {
   try {
-    const { writeFileSync, chmodSync } = await import('node:fs');
+    const { writeFileSync } = await import('node:fs');
     const { join } = await import('node:path');
-    const { tmpdir } = await import('node:os');
 
     const baseUrl = `http://${host}:${port}`;
-    const allowTmp = process.env.BROWSER_ECHO_ALLOW_TMP_DISCOVERY === '1';
-    const token = allowTmp ? (process.env.BROWSER_ECHO_DISCOVERY_TOKEN || randomUUID()) : undefined;
-    if (allowTmp) {
-      try { process.env.BROWSER_ECHO_DISCOVERY_TOKEN = token as string; } catch {}
-      try { process.env.BROWSER_ECHO_REQUIRE_TOKEN = process.env.BROWSER_ECHO_REQUIRE_TOKEN || '1'; } catch {}
-    }
-    const payloadLocal = JSON.stringify({
+    const payload = JSON.stringify({
       url: baseUrl,
       routeLogs: logsRoute,
       timestamp: Date.now(),
-      pid: typeof process !== 'undefined' ? process.pid : undefined,
-      projectRoot: meta?.projectRoot || process.cwd()
-    });
-    const payloadTmp = JSON.stringify({
-      url: baseUrl,
-      routeLogs: logsRoute,
-      timestamp: Date.now(),
-      pid: typeof process !== 'undefined' ? process.pid : undefined,
-      projectRoot: meta?.projectRoot || process.cwd(),
-      token
+      pid: typeof process !== 'undefined' ? process.pid : undefined
     });
 
-    let files: string[] = [];
-    if (meta?.scope === 'http') {
-      // HTTP transport: write project-local; mirror to tmp only when explicitly enabled
-      files = [ join(process.cwd(), '.browser-echo-mcp.json') ];
-      if (allowTmp) files.push(join(tmpdir(), 'browser-echo-mcp.json'));
-    } else {
-      // STDIO transport writes only to project-local by default; optionally mirror to tmp when explicitly enabled
-      files = [ join(process.cwd(), '.browser-echo-mcp.json') ];
-      if (allowTmp) files.push(join(tmpdir(), 'browser-echo-mcp.json'));
-    }
-
-    for (const f of files) {
-      const isTmp = f === join(tmpdir(), 'browser-echo-mcp.json');
-      try { writeFileSync(f, isTmp ? payloadTmp : payloadLocal); } catch {}
-      // Restrict permissions when writing token-bearing tmp file
-      if (isTmp) { try { chmodSync(f, 0o600); } catch {} }
-    }
+    const file = join(process.cwd(), '.browser-echo-mcp.json');
+    try { writeFileSync(file, payload); } catch {}
   } catch {
     // best-effort only
   }
@@ -393,30 +362,6 @@ function createLogIngestRoutes(store: LogStore, logsRoute: `/${string}`) {
   // Log ingest (POST)
   router.post(logsRoute, defineEventHandler(async (event) => {
     try {
-      // Optional token check if discovery provided one (best-effort; disabled by default in dev)
-      try {
-        const { readFileSync, existsSync } = await import('node:fs');
-        const { join } = await import('node:path');
-        const { tmpdir } = await import('node:os');
-        const candidates = [join(process.cwd(), '.browser-echo-mcp.json'), join(tmpdir(), 'browser-echo-mcp.json')];
-        let requiredToken = '';
-        for (const p of candidates) {
-          try {
-            if (!existsSync(p)) continue;
-            const raw = readFileSync(p, 'utf-8');
-            const data = JSON.parse(raw);
-            if (data?.token) { requiredToken = String(data.token); break; }
-          } catch {}
-        }
-        if (requiredToken && process.env.BROWSER_ECHO_REQUIRE_TOKEN === '1') {
-          const got = String((event.node.req.headers['x-be-token'] as any) || '').trim();
-          if (!got || got !== requiredToken) {
-            setResponseStatus(event, 401);
-            return 'unauthorized';
-          }
-        }
-      } catch {}
-
       const raw = await readRawBody(event);
       const payload = typeof raw === 'string' ? JSON.parse(raw) : (raw ? JSON.parse(Buffer.from(raw as any).toString('utf-8')) : undefined);
       if (!payload || !Array.isArray(payload.entries)) {

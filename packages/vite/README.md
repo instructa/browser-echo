@@ -140,7 +140,7 @@ interface BrowserEchoViteOptions {
   };
   discoverMcp?: boolean;             // Enable MCP auto-discovery (default: true)
   discoveryRefreshMs?: number;       // Discovery refresh interval (default: 30000)
-  discoveryPorts?: number[];         // Ports to scan for MCP (default: [5179, 5178, 3001, 4000, 5173])
+  discoveryPorts?: number[];         // (Deprecated) No longer used; discovery tries 5179 in dev, then local file
 }
 ```
 
@@ -186,15 +186,10 @@ browserEcho({
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Force suppress terminal output
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=0` — Force show terminal output
 
-#### Discovery and Isolation (Advanced)
+#### Discovery behavior
 
-- `BROWSER_ECHO_ALLOW_PORT_SCAN=1` — Opt-in to port scanning when no discovery file or explicit URL is found (default: disabled)
-- `BROWSER_ECHO_ALLOW_TMP_DISCOVERY=1` — Opt-in to writing tmp discovery file for cross-process discovery; generates a token and enforces it (default: disabled)
-- `BROWSER_ECHO_PROJECT_ROOT=/abs/path` — Explicit project root used by the MCP server when writing discovery metadata; ensures correct scoping
-
-Notes:
-- By default, the plugin only trusts project-local discovery files (at `.browser-echo-mcp.json`). Tmp discovery is ignored unless the `projectRoot` in the file matches the current project.
-- When `BROWSER_ECHO_ALLOW_TMP_DISCOVERY=1` is set on the MCP server, a token is written to the tmp discovery file and enforced via the `x-be-token` header.
+- Discovery order: `BROWSER_ECHO_MCP_URL` → port 5179 (dev) → project-local `.browser-echo-mcp.json`.
+- Tmp discovery and multi-port scanning have been removed for simplicity and safety.
 
 ## File Logging (Vite-only feature)
 

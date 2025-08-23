@@ -195,9 +195,14 @@ Next.js automatically discovers and forwards logs to MCP servers. No configurati
 
 The Next.js route handler automatically detects MCP servers and forwards logs when available. When MCP is detected, terminal output is suppressed by default.
 
+Discovery order:
+1. `BROWSER_ECHO_MCP_URL` (normalized, trailing `/mcp` is stripped)
+2. Dev probe: `http://127.0.0.1:5179` then `http://localhost:5179`
+3. Project-local discovery file: `.browser-echo-mcp.json` (walks up parent directories)
+
 ### Environment Variables
 
-- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Set MCP server URL
+- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Set MCP server URL (base URL is derived automatically)
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Force suppress terminal output
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=0` — Force show terminal output even when MCP is active
 

@@ -73,3 +73,76 @@ it('does not suppress terminal when MCP not configured', async () => {
   // When MCP not configured, should print to terminal (logs captured)
   expect(logs.some(([lvl, m]) => lvl === 'warn' || lvl === 'info' || lvl === 'error')).toBe(true);
 });
+
+it('dev probe tries 127.0.0.1 then localhost', async () => {
+  const REAL_FETCH = globalThis.fetch as any;
+  const fetchSpy = vi.fn(async (url: any) => {
+    const u = String(url);
+    if (u === 'http://127.0.0.1:5179/health') return { ok: false } as any;
+    if (u === 'http://localhost:5179/health') return { ok: true } as any;
+    return { ok: true } as any;
+  });
+  globalThis.fetch = fetchSpy as any;
+
+  const oldEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'development';
+  const { server, logs, handlers } = makeServerMock();
+  const p = browserEcho();
+  (p as any).configureServer(server);
+  const [route, fn] = handlers[0];
+
+  const req: any = new (class {
+    method = 'POST';
+    listeners: Record<string, Function> = {};
+    on(evt: string, cb: any) { this.listeners[evt] = cb; }
+    trigger(data: any) { this.listeners['data']?.(data); this.listeners['end']?.(); }
+  })();
+  const res: any = { statusCode: 0, end: vi.fn() };
+  const payload = JSON.stringify({ sessionId: 'probe01', entries: [{ level: 'info', text: 'hello' }] });
+  const done = new Promise<void>((resolve) => { res.end = vi.fn(() => resolve()); });
+  setTimeout(() => req.trigger(Buffer.from(payload)), 0);
+  fn(req, res, () => {});
+  await done;
+
+  expect(fetchSpy).toHaveBeenCalledWith('http://127.0.0.1:5179/health', expect.anything());
+  expect(fetchSpy).toHaveBeenCalledWith('http://localhost:5179/health', expect.anything());
+
+  globalThis.fetch = REAL_FETCH;
+  process.env.NODE_ENV = oldEnv;
+});
+
+it('ignores malformed discovery file and continues printing', async () => {
+  const { server, logs, handlers } = makeServerMock();
+  const readSpy = vi.spyOn(require('node:fs'), 'readFileSync' as any).mockImplementation(() => '{ not valid json');
+  const existSpy = vi.spyOn(require('node:fs'), 'existsSync' as any).mockImplementation(() => true);
+  const p = browserEcho();
+  (p as any).configureServer(server);
+  const [route, fn] = handlers[0];
+  const req: any = new (class { method='POST'; listeners: any={}; on(e: string, cb: any){this.listeners[e]=cb} trigger(d:any){this.listeners['data']?.(d); this.listeners['end']?.();} })();
+  const res: any = { statusCode: 0, end: vi.fn() };
+  const payload = JSON.stringify({ sessionId: 'x', entries: [{ level: 'warn', text: 'bad file' }] });
+  const done = new Promise<void>((r)=>{res.end = vi.fn(()=>r());});
+  setTimeout(()=>req.trigger(Buffer.from(payload)),0);
+  fn(req,res,()=>{});
+  await done;
+  expect(logs.some(([lvl]) => lvl === 'warn')).toBe(true);
+  readSpy.mockRestore(); existSpy.mockRestore();
+});
+
+it('recovers when fs read throws during discovery (race)', async () => {
+  const { server, logs, handlers } = makeServerMock();
+  const readSpy = vi.spyOn(require('node:fs'), 'readFileSync' as any).mockImplementation(() => { throw new Error('race'); });
+  const existSpy = vi.spyOn(require('node:fs'), 'existsSync' as any).mockImplementation(() => true);
+  const p = browserEcho();
+  (p as any).configureServer(server);
+  const [route, fn] = handlers[0];
+  const req: any = new (class { method='POST'; listeners: any={}; on(e: string, cb: any){this.listeners[e]=cb} trigger(d:any){this.listeners['data']?.(d); this.listeners['end']?.();} })();
+  const res: any = { statusCode: 0, end: vi.fn() };
+  const payload = JSON.stringify({ sessionId: 'x', entries: [{ level: 'warn', text: 'race' }] });
+  const done = new Promise<void>((r)=>{res.end = vi.fn(()=>r());});
+  setTimeout(()=>req.trigger(Buffer.from(payload)),0);
+  fn(req,res,()=>{});
+  await done;
+  expect(logs.some(([lvl]) => lvl === 'warn')).toBe(true);
+  readSpy.mockRestore(); existSpy.mockRestore();
+});
