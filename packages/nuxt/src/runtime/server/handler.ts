@@ -23,15 +23,16 @@ export default defineEventHandler(async (event) => {
       mcp = { url: MCP_URL };
     }
   }
+  // Prefer project-local discovery over port scan
   if (!mcp.url && process.env.NODE_ENV === 'development') {
-    // Try default port 5179 only in development
+    mcp = await __resolveMcpUrlNuxt();
+  }
+  if (!mcp.url && process.env.NODE_ENV === 'development') {
+    // Try default port 5179 only as a last resort
     const candidates = ['http://127.0.0.1:5179', 'http://localhost:5179'];
     for (const base of candidates) {
       if (await __pingHealthNuxt(`${base}/health`, 300)) { mcp = { url: base }; break; }
     }
-  }
-  if (!mcp.url && process.env.NODE_ENV === 'development') {
-    mcp = await __resolveMcpUrlNuxt();
   }
 
   // Forward to MCP server if available (fire-and-forget)
@@ -108,7 +109,10 @@ async function __resolveMcpUrlNuxt(): Promise<{ url: string; token?: string; rou
 
   const fromFile = await __readDiscoveryFromFileNuxt();
   if (fromFile.url) {
-    if (await __pingHealthNuxt(`${fromFile.url}/health`, 300)) {
+    // Require health and, if provided, project scoping match
+    const healthy = await __pingHealthNuxt(`${fromFile.url}/health`, 300);
+    const scopedOk = await __isInsideProjectNuxt(fromFile.projectRoot);
+    if (healthy && scopedOk) {
       __mcpDiscoveryCacheNuxt = { url: fromFile.url, token: fromFile.token, routeLogs: fromFile.routeLogs, ts: now };
       return fromFile;
     }
@@ -118,7 +122,7 @@ async function __resolveMcpUrlNuxt(): Promise<{ url: string; token?: string; rou
   return { url: '' };
 }
 
-async function __readDiscoveryFromFileNuxt(): Promise<{ url: string; token?: string; routeLogs?: `/${string}` }> {
+async function __readDiscoveryFromFileNuxt(): Promise<{ url: string; token?: string; routeLogs?: `/${string}`; projectRoot?: string }> {
   try {
     const { readFileSync, existsSync } = await import('node:fs');
     const { join, dirname } = await import('node:path');
@@ -134,7 +138,8 @@ async function __readDiscoveryFromFileNuxt(): Promise<{ url: string; token?: str
           const ts = typeof data?.timestamp === 'number' ? data.timestamp : 0;
           const token = data?.token ? String(data.token) : undefined;
           const routeLogs = data?.routeLogs ? String(data.routeLogs) as `/${string}` : undefined;
-          if (url && (Date.now() - ts) < 60_000) return { url, token, routeLogs };
+          const projectRoot = data?.projectRoot ? String(data.projectRoot) : undefined;
+          if (url && (Date.now() - ts) < 60_000) return { url, token, routeLogs, projectRoot };
         } catch {}
       }
       const parent = dirname(dir);
@@ -152,6 +157,20 @@ async function __pingHealthNuxt(url: string, timeoutMs: number): Promise<boolean
     const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' as any });
     clearTimeout(t);
     return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function __isInsideProjectNuxt(root?: string): Promise<boolean> {
+  if (!root) return true;
+  try {
+    const { realpathSync } = await import('node:fs');
+    const { relative, isAbsolute, sep, dirname } = await import('node:path');
+    const realRoot = realpathSync(root);
+    const realCwd = realpathSync(process.cwd());
+    const rel = relative(realRoot, realCwd);
+    return rel === '' || (!rel.startsWith('..' + sep) && !isAbsolute(rel));
   } catch {
     return false;
   }

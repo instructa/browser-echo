@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "browser-echo": {
-      "command": "npx",
-      "args": ["https://pkg.pr.new/instructa/browser-echo/@browser-echo/mcp@70c8792"]
+      "command": "node",
+      "args": ["packages/mcp/bin/cli.mjs"]
     }
   }
 }

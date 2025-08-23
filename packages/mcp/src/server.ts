@@ -334,7 +334,12 @@ async function advertiseDiscovery(host: string, port: number, logsRoute: `/${str
       url: baseUrl,
       routeLogs: logsRoute,
       timestamp: Date.now(),
-      pid: typeof process !== 'undefined' ? process.pid : undefined
+      pid: typeof process !== 'undefined' ? process.pid : undefined,
+      // Advertise additional metadata to allow project-scoped discovery
+      projectRoot: _meta?.projectRoot ? String(_meta.projectRoot) : undefined,
+      scope: _meta?.scope || undefined,
+      aggregator: _meta?.aggregator || undefined,
+      token: _meta?.token ? String(_meta.token) : undefined
     });
 
     const file = join(process.cwd(), '.browser-echo-mcp.json');

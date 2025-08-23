@@ -150,7 +150,9 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
             const pid = typeof data?.pid === 'number' ? data.pid : undefined;
             const projectRoot = data?.projectRoot ? String(data.projectRoot) : undefined;
             if (url) return { url, routeLogs, ts, token, pid, projectRoot, sourcePath: p };
-          } catch {}
+          } catch (err: any) {
+            try { server.config.logger.warn(`${options.tag} failed to read discovery file at ${p}: ${err?.message || err}`); } catch {}
+          }
         }
         const parent = dirname(dir);
         if (parent === dir || parent === root) break;
@@ -185,7 +187,26 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
       announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
       return;
     }
-    // 2) Try port 5179 in development
+    // 2) Discovery file (project-scoped)
+    const disc = readDiscoveryFile();
+    if (disc && disc.url) {
+      const base = String(disc.url).replace(/\/$/, '');
+      const routeLogs = (disc.routeLogs as `/${string}`) || options.mcp.routeLogs;
+      // Only accept discovery for this project
+      const withinProject = isInsideProject(disc.projectRoot, process.cwd());
+      const healthy = await tryPingHealth(base, 300);
+      let pidOk = true;
+      try { if (disc.pid && disc.pid > 0) { process.kill(disc.pid, 0); pidOk = true; } } catch { pidOk = false; }
+      if (withinProject && (healthy || pidOk)) {
+        resolvedBase = base;
+        resolvedIngest = `${base}${routeLogs}`;
+        resolvedToken = disc.token || '';
+        resolvedSource = 'local';
+        announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest} (source: ${resolvedSource})`);
+        return;
+      }
+    }
+    // 3) Try default port 5179 in development (last resort)
     if (process.env.NODE_ENV === 'development') {
       for (const host of ['http://127.0.0.1:5179', 'http://localhost:5179']) {
         if (await tryPingHealth(host)) {
@@ -196,23 +217,6 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
           announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
           return;
         }
-      }
-    }
-    // 3) Discovery file (local only)
-    const disc = readDiscoveryFile();
-    if (disc && disc.url) {
-      const base = String(disc.url).replace(/\/$/, '');
-      const routeLogs = (disc.routeLogs as `/${string}`) || options.mcp.routeLogs;
-      const healthy = await tryPingHealth(base, 300);
-      let pidOk = true;
-      try { if (disc.pid && disc.pid > 0) { process.kill(disc.pid, 0); pidOk = true; } } catch { pidOk = false; }
-      if (healthy || pidOk) {
-        resolvedBase = base;
-        resolvedIngest = `${base}${routeLogs}`;
-        resolvedToken = disc.token || '';
-        resolvedSource = 'local';
-        announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest} (source: ${resolvedSource})`);
-        return;
       }
     }
     // 4) Not found or unhealthy
