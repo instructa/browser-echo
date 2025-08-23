@@ -1,4 +1,6 @@
 import { createServer as createNodeServer } from 'node:http';
+import { writeFileSync, rmSync, renameSync } from 'node:fs';
+import { join as joinPath } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import { createApp, createRouter, defineEventHandler, getQuery, readRawBody, setResponseStatus, toNodeListener } from 'h3';
@@ -86,6 +88,8 @@ export async function stopServer(server: McpServer) {
     console.error('Error occurred during server stop:', error);
   }
   finally {
+    // Best-effort cleanup of project JSON
+    try { rmSync(joinPath(process.cwd(), '.browser-echo.json'), { force: true }); } catch {}
     process.exit(0);
   }
 }
@@ -221,9 +225,8 @@ export async function startHttpServer(
   } catch {}
 
   await new Promise<void>((resolve) => nodeServer.listen(opts.port, opts.host, () => resolve()));
-
-  // Advertise discovery so providers can auto-detect this server locally
-  await advertiseDiscovery(opts.host, opts.port, opts.logsRoute, { projectRoot: process.env.BROWSER_ECHO_PROJECT_ROOT || process.cwd(), scope: 'http' });
+  // Write project-local config for providers
+  writeProjectJson(opts.host, opts.port, opts.logsRoute);
 
   // eslint-disable-next-line no-console
   console.log(`MCP (Streamable HTTP) listening → http://${opts.host}:${opts.port}${opts.endpoint}`);
@@ -315,38 +318,22 @@ export async function startIngestOnlyServer(
     }
   }
 
-  // Advertise discovery for stdio transport. By default, only write project-local discovery.
-  const requestedPort = opts.port;
-  const isAggregator = requestedPort !== 0 && actualPort === requestedPort;
-  await advertiseDiscovery(opts.host, actualPort, opts.logsRoute, { projectRoot: process.env.BROWSER_ECHO_PROJECT_ROOT || process.cwd(), scope: 'stdio', aggregator: isAggregator });
+  // Write project-local config for providers
+  writeProjectJson(opts.host, actualPort, opts.logsRoute);
 
   // eslint-disable-next-line no-console
   console.error(`Log ingest endpoint        → http://${opts.host}:${actualPort}${opts.logsRoute}`);
 }
 
-async function advertiseDiscovery(host: string, port: number, logsRoute: `/${string}`, _meta?: { projectRoot?: string; token?: string; scope?: 'http' | 'stdio'; aggregator?: boolean }) {
+function writeProjectJson(host: string, port: number, route: `/${string}`) {
   try {
-    const { writeFileSync } = await import('node:fs');
-    const { join } = await import('node:path');
-
     const baseUrl = `http://${host}:${port}`;
-    const payload = JSON.stringify({
-      url: baseUrl,
-      routeLogs: logsRoute,
-      timestamp: Date.now(),
-      pid: typeof process !== 'undefined' ? process.pid : undefined,
-      // Advertise additional metadata to allow project-scoped discovery
-      projectRoot: _meta?.projectRoot ? String(_meta.projectRoot) : undefined,
-      scope: _meta?.scope || undefined,
-      aggregator: _meta?.aggregator || undefined,
-      token: _meta?.token ? String(_meta.token) : undefined
-    });
-
-    const file = join(process.cwd(), '.browser-echo-mcp.json');
-    try { writeFileSync(file, payload); } catch {}
-  } catch {
-    // best-effort only
-  }
+    const payload = JSON.stringify({ url: baseUrl, route, timestamp: Date.now(), pid: typeof process !== 'undefined' ? process.pid : undefined });
+    const file = joinPath(process.cwd(), '.browser-echo.json');
+    const tmp = file + '.tmp';
+    try { writeFileSync(tmp, payload); renameSync(tmp, file); }
+    catch { try { writeFileSync(file, payload); } catch {} }
+  } catch {}
 }
 
 /** Create log ingest routes that can be attached to any H3 app */

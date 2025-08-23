@@ -1,7 +1,6 @@
 import { defineEventHandler, readBody, setResponseStatus } from 'h3';
 
-const MCP_URL = (process.env.BROWSER_ECHO_MCP_URL || '').replace(/\/$/, '').replace(/\/mcp$/i, '');
-const MCP_LOGS_ROUTE = process.env.BROWSER_ECHO_MCP_LOGS_ROUTE || '/__client-logs';
+// Simplified: resolve MCP from project-local JSON once; fallback to 5179
 
 type Level = 'log' | 'info' | 'warn' | 'error' | 'debug';
 type Entry = { level: Level | string; text: string; time?: number; stack?: string; source?: string; };
@@ -16,31 +15,14 @@ export default defineEventHandler(async (event) => {
     setResponseStatus(event, 400); return 'invalid payload';
   }
 
-  // Resolve MCP URL: env var (if healthy) → port 5179 → local discovery file (dev only)
-  let mcp = { url: '', token: '', routeLogs: '' as `/${string}` | '' } as { url: string; token?: string; routeLogs?: `/${string}` };
-  if (MCP_URL) {
-    if (await __pingHealthNuxt(`${MCP_URL}/health`, 300)) {
-      mcp = { url: MCP_URL };
-    }
-  }
-  // Prefer project-local discovery over port scan
-  if (!mcp.url && process.env.NODE_ENV === 'development') {
-    mcp = await __resolveMcpUrlNuxt();
-  }
-  if (!mcp.url && process.env.NODE_ENV === 'development' && process.env.BROWSER_ECHO_ALLOW_PORT_SCAN === '1') {
-    // Try default port 5179 only as a last resort (gated)
-    const candidates = ['http://127.0.0.1:5179', 'http://localhost:5179'];
-    for (const base of candidates) {
-      if (await __pingHealthNuxt(`${base}/health`, 300)) { mcp = { url: base }; break; }
-    }
-  }
+  // Resolve MCP once: project JSON → 5179 fallback
+  const mcp = await __resolveMcpFromProjectNuxt();
 
   // Forward to MCP server if available (fire-and-forget)
   if (mcp.url) {
     try {
-      const route = (MCP_LOGS_ROUTE as `/${string}`) || (mcp.routeLogs as `/${string}`) || '/__client-logs';
+      const route = (mcp.routeLogs as `/${string}`) || '/__client-logs';
       const headers: Record<string,string> = { 'content-type': 'application/json' };
-      if (mcp.token) headers['x-be-token'] = mcp.token;
       fetch(`${mcp.url}${route}`, {
         method: 'POST',
         headers,
@@ -51,11 +33,8 @@ export default defineEventHandler(async (event) => {
     } catch {}
   }
 
-  // Dynamically decide whether to print to terminal
-  const envVal = process.env.BROWSER_ECHO_SUPPRESS_TERMINAL;
-  const forceSuppress = envVal === '1';
-  const forcePrint = envVal === '0';
-  const shouldPrint = forcePrint ? true : (forceSuppress ? false : !mcp.url);
+  // Suppress when forwarding active
+  const shouldPrint = !mcp.url;
 
   const sid = (payload.sessionId ?? 'anon').slice(0, 8);
   for (const entry of payload.entries) {
@@ -97,57 +76,29 @@ function color(level: Level, msg: string) {
 }
 function dim(s: string) { return c.dim + s + c.reset; }
 
-let __mcpDiscoveryCacheNuxt: { url: string; token?: string; routeLogs?: `/${string}`; ts: number } | null = null;
+let __mcpProjectCacheNuxt: { url: string; routeLogs?: `/${string}` } | null = null;
 
-async function __resolveMcpUrlNuxt(): Promise<{ url: string; token?: string; routeLogs?: `/${string}` }> {
-  const now = Date.now();
-  const CACHE_TTL_MS = 10_000;
-
-  if (__mcpDiscoveryCacheNuxt && (now - __mcpDiscoveryCacheNuxt.ts) < CACHE_TTL_MS) {
-    return { url: __mcpDiscoveryCacheNuxt.url, token: __mcpDiscoveryCacheNuxt.token, routeLogs: __mcpDiscoveryCacheNuxt.routeLogs };
-  }
-
-  const fromFile = await __readDiscoveryFromFileNuxt();
-  if (fromFile.url) {
-    // Require health and, if provided, project scoping match
-    const healthy = await __pingHealthNuxt(`${fromFile.url}/health`, 300);
-    const scopedOk = await __isInsideProjectNuxt(fromFile.projectRoot);
-    if (healthy && scopedOk) {
-      __mcpDiscoveryCacheNuxt = { url: fromFile.url, token: fromFile.token, routeLogs: fromFile.routeLogs, ts: now };
-      return fromFile;
-    }
-  }
-
-  __mcpDiscoveryCacheNuxt = { url: '', ts: now } as any;
-  return { url: '' };
-}
-
-async function __readDiscoveryFromFileNuxt(): Promise<{ url: string; token?: string; routeLogs?: `/${string}`; projectRoot?: string }> {
+async function __resolveMcpFromProjectNuxt(): Promise<{ url: string; routeLogs?: `/${string}` }> {
+  if (__mcpProjectCacheNuxt) return __mcpProjectCacheNuxt;
   try {
     const { readFileSync, existsSync } = await import('node:fs');
-    const { join, dirname } = await import('node:path');
-    let dir = process.cwd();
-    const root = dirname('/');
-    while (true) {
-      const p = join(dir, '.browser-echo-mcp.json');
-      if (existsSync(p)) {
-        try {
-          const raw = readFileSync(p, 'utf-8');
-          const data = JSON.parse(raw);
-          const url = (data?.url ? String(data.url) : '').replace(/\/$/, '');
-          const ts = typeof data?.timestamp === 'number' ? data.timestamp : 0;
-          const token = data?.token ? String(data.token) : undefined;
-          const routeLogs = data?.routeLogs ? String(data.routeLogs) as `/${string}` : undefined;
-          const projectRoot = data?.projectRoot ? String(data.projectRoot) : undefined;
-          if (url && (Date.now() - ts) < 60_000) return { url, token, routeLogs, projectRoot };
-        } catch {}
+    const { join } = await import('node:path');
+    const p = join(process.cwd(), '.browser-echo.json');
+    if (existsSync(p)) {
+      const raw = readFileSync(p, 'utf-8');
+      const data = JSON.parse(raw);
+      const url = (data?.url ? String(data.url) : '').replace(/\/$/, '');
+      const routeLogs = (data?.route ? String(data.route) as `/${string}` : '/__client-logs');
+      if (url && await __pingHealthNuxt(`${url}/health`, 300)) {
+        __mcpProjectCacheNuxt = { url, routeLogs };
+        return __mcpProjectCacheNuxt;
       }
-      const parent = dirname(dir);
-      if (parent === dir || parent === root) break;
-      dir = parent;
     }
   } catch {}
-  return { url: '' };
+  for (const base of ['http://127.0.0.1:5179', 'http://localhost:5179']) {
+    if (await __pingHealthNuxt(`${base}/health`, 300)) { __mcpProjectCacheNuxt = { url: base, routeLogs: '/__client-logs' }; return __mcpProjectCacheNuxt; }
+  }
+  __mcpProjectCacheNuxt = { url: '' } as any; return __mcpProjectCacheNuxt;
 }
 
 async function __pingHealthNuxt(url: string, timeoutMs: number): Promise<boolean> {
@@ -157,20 +108,6 @@ async function __pingHealthNuxt(url: string, timeoutMs: number): Promise<boolean
     const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' as any });
     clearTimeout(t);
     return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-async function __isInsideProjectNuxt(root?: string): Promise<boolean> {
-  if (!root) return true;
-  try {
-    const { realpathSync } = await import('node:fs');
-    const { relative, isAbsolute, sep, dirname } = await import('node:path');
-    const realRoot = realpathSync(root);
-    const realCwd = realpathSync(process.cwd());
-    const rel = relative(realRoot, realCwd);
-    return rel === '' || (!rel.startsWith('..' + sep) && !isAbsolute(rel));
   } catch {
     return false;
   }

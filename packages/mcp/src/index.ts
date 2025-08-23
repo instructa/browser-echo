@@ -46,7 +46,7 @@ const cli = defineCommand({
       || args.port !== '5179' || args.host !== '127.0.0.1' 
       || args.endpoint !== '/mcp' || args.logsRoute !== '/__client-logs';
 
-    // Start server with selected transport
+    // Start server with selected transport. Prefer 5179 for ingest if stdio.
     await startServer(mcp, useHttp ? {
       type: 'http',
       host: String(args.host),
