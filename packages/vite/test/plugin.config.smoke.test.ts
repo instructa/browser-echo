@@ -44,12 +44,11 @@ describe('Vite plugin configuration (smoke)', () => {
   });
 
   it('forwards to MCP and suppresses terminal when MCP URL is set', async () => {
-    process.env.BROWSER_ECHO_MCP_URL = 'http://localhost:5179';
     const fetchSpy = vi.fn(async () => ({ ok: true } as any));
     globalThis.fetch = fetchSpy as any;
 
     const { server, logs, handlers } = makeServerMock();
-    const p = browserEcho();
+    const p = browserEcho({ mcp: { url: 'http://localhost:5179' } });
     (p as any).configureServer(server);
     expect(handlers.length).toBe(1);
 
@@ -78,15 +77,12 @@ describe('Vite plugin configuration (smoke)', () => {
     expect(logs.some(([, m]) => m.includes('hi suppr'))).toBe(false);
   });
 
-  it('uses env logs route and forces print when SUPPRESS_TERMINAL=0', async () => {
-    process.env.BROWSER_ECHO_MCP_URL = 'http://localhost:5179';
-    process.env.BROWSER_ECHO_MCP_LOGS_ROUTE = '/custom-ingest';
-    process.env.BROWSER_ECHO_SUPPRESS_TERMINAL = '0';
+  it('uses custom logs route and forces print when suppressTerminal=false', async () => {
     const fetchSpy = vi.fn(async () => ({ ok: true } as any));
     globalThis.fetch = fetchSpy as any;
 
     const { server, logs, handlers } = makeServerMock();
-    const p = browserEcho();
+    const p = browserEcho({ mcp: { url: 'http://localhost:5179', routeLogs: '/custom-ingest', suppressTerminal: false } });
     (p as any).configureServer(server);
     expect(handlers.length).toBe(1);
 

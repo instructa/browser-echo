@@ -74,21 +74,12 @@ it('does not suppress terminal when MCP not configured', async () => {
   expect(logs.some(([lvl, m]) => lvl === 'warn' || lvl === 'info' || lvl === 'error')).toBe(true);
 });
 
-it('dev probe tries 127.0.0.1 then localhost', async () => {
+it('does not probe dev ports; logs locally until project JSON present', async () => {
   const REAL_FETCH = globalThis.fetch as any;
-  const fetchSpy = vi.fn(async (url: any) => {
-    const u = String(url);
-    if (u === 'http://127.0.0.1:5179/health') return { ok: false } as any;
-    if (u === 'http://localhost:5179/health') return { ok: true } as any;
-    return { ok: true } as any;
-  });
+  const fetchSpy = vi.fn(async () => ({ ok: true } as any));
   globalThis.fetch = fetchSpy as any;
 
-  const oldEnv = process.env.NODE_ENV;
-  const oldScan = process.env.BROWSER_ECHO_ALLOW_PORT_SCAN;
-  process.env.NODE_ENV = 'development';
-  process.env.BROWSER_ECHO_ALLOW_PORT_SCAN = '1';
-  const { server, logs, handlers } = makeServerMock();
+  const { server, handlers } = makeServerMock();
   const p = browserEcho();
   (p as any).configureServer(server);
   const [route, fn] = handlers[0];
@@ -106,18 +97,17 @@ it('dev probe tries 127.0.0.1 then localhost', async () => {
   fn(req, res, () => {});
   await done;
 
-  expect(fetchSpy).toHaveBeenCalledWith('http://127.0.0.1:5179/health', expect.anything());
-  expect(fetchSpy).toHaveBeenCalledWith('http://localhost:5179/health', expect.anything());
+  // Should not attempt any health probes to 5179
+  expect(fetchSpy.mock.calls.filter((c:any[]) => String(c[0]).includes('5179/health')).length).toBe(0);
 
   globalThis.fetch = REAL_FETCH;
-  process.env.NODE_ENV = oldEnv;
-  process.env.BROWSER_ECHO_ALLOW_PORT_SCAN = oldScan;
 });
 
-it('ignores malformed discovery file and continues printing', async () => {
+it('ignores malformed project json and continues printing', async () => {
   const { server, logs, handlers } = makeServerMock();
-  const readSpy = vi.spyOn(require('node:fs'), 'readFileSync' as any).mockImplementation(() => '{ not valid json');
-  const existSpy = vi.spyOn(require('node:fs'), 'existsSync' as any).mockImplementation(() => true);
+  const fs: any = require('node:fs');
+  const readSpy = vi.spyOn(fs, 'readFileSync').mockImplementation(() => '{ not valid json');
+  const existSpy = vi.spyOn(fs, 'existsSync').mockImplementation((p: any) => String(p).endsWith('.browser-echo-mcp.json'));
   const p = browserEcho();
   (p as any).configureServer(server);
   const [route, fn] = handlers[0];
@@ -128,6 +118,7 @@ it('ignores malformed discovery file and continues printing', async () => {
   setTimeout(()=>req.trigger(Buffer.from(payload)),0);
   fn(req,res,()=>{});
   await done;
+  // When discovery is malformed or missing, middleware still prints the incoming warn entry
   expect(logs.some(([lvl]) => lvl === 'warn')).toBe(true);
   readSpy.mockRestore(); existSpy.mockRestore();
 });

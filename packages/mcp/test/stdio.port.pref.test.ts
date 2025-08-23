@@ -8,7 +8,7 @@ import { McpTestClient } from './utils/mcpTestClient';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-describe('@browser-echo/mcp stdio prefers 5179 and writes discovery to cwd', () => {
+describe('@browser-echo/mcp stdio prefers 5179 and writes project json to cwd', () => {
   let client: McpTestClient;
   let workDir: string;
 
@@ -35,9 +35,7 @@ describe('@browser-echo/mcp stdio prefers 5179 and writes discovery to cwd', () 
     const raw = readFileSync(disc, 'utf-8');
     const data = JSON.parse(raw);
     expect(String(data.url)).toMatch(/^http:\/\/127\.0\.0\.1:(\d{2,5})$/);
-    // Should not write legacy tmp discovery
-    const tmpDisc = join(tmpdir(), 'browser-echo-mcp.json');
-    expect(existsSync(tmpDisc)).toBe(false);
+    // No tmp discovery any more
   });
 });
 

@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
-// Simplified: resolve MCP from project-local JSON once; fallback to 5179
+// Simplified: resolve MCP from project-local JSON once; no fallback
 
 export type BrowserLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
 type Entry = { level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; };
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   catch { return new NextResponse('invalid JSON', { status: 400 }); }
   if (!payload || !Array.isArray(payload.entries)) return new NextResponse('invalid payload', { status: 400 });
 
-  // Resolve MCP once: project JSON → 5179 fallback
+  // Resolve MCP once: project JSON only (no fallback)
   const mcp = await __resolveMcpFromProject();
 
   // Forward to MCP server if available (fire-and-forget)
@@ -78,15 +78,17 @@ function dim(s: string) { return c.dim + s + c.reset; }
 let __mcpProjectCache: { url: string; routeLogs?: `/${string}` } | null = null;
 
 async function __resolveMcpFromProject(): Promise<{ url: string; routeLogs?: `/${string}` }> {
-  if (__mcpProjectCache) return __mcpProjectCache;
+  // Only cache positive resolutions; always retry if unresolved/empty
+  if (__mcpProjectCache && __mcpProjectCache.url) return __mcpProjectCache;
   try {
     const { readFileSync, existsSync } = await import('node:fs');
     const { join } = await import('node:path');
-    const p = join(process.cwd(), '.browser-echo.json');
+    const p = join(process.cwd(), '.browser-echo-mcp.json');
     if (existsSync(p)) {
       const raw = readFileSync(p, 'utf-8');
       const data = JSON.parse(raw);
-      const url = (data?.url ? String(data.url) : '').replace(/\/$/, '');
+      const rawUrl = (data?.url ? String(data.url) : '');
+      const url = rawUrl.replace(/\/$/, '').replace(/\/mcp$/i, '');
       const routeLogs = (data?.route ? String(data.route) : '/__client-logs') as `/${string}`;
       if (url && await __pingHealth(`${url}/health`, 250)) {
         __mcpProjectCache = { url, routeLogs };
@@ -94,13 +96,6 @@ async function __resolveMcpFromProject(): Promise<{ url: string; routeLogs?: `/$
       }
     }
   } catch {}
-  // Fallback to default 5179
-  for (const base of ['http://127.0.0.1:5179', 'http://localhost:5179']) {
-    if (await __pingHealth(`${base}/health`, 250)) {
-      __mcpProjectCache = { url: base, routeLogs: '/__client-logs' };
-      return __mcpProjectCache;
-    }
-  }
   __mcpProjectCache = { url: '' } as any;
   return __mcpProjectCache;
 }

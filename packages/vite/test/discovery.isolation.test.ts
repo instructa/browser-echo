@@ -77,7 +77,7 @@ describe('Discovery behavior (local file + port 5179)', () => {
   it('honors local discovery and forwards', async () => {
     writeLocalDiscovery({
       url: 'http://127.0.0.1:59992',
-      routeLogs: '/__client-logs',
+      route: '/__client-logs',
       timestamp: Date.now(),
       pid: 999998
     });

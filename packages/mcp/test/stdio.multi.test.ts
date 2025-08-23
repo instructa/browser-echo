@@ -57,8 +57,8 @@ describe('@browser-echo/mcp stdio transport — multiple editors', () => {
     const d2 = existsSync(p2) ? JSON.parse(readFileSync(p2, 'utf-8')) : {};
     const base1 = String(d1?.url || '').replace(/\/$/, '');
     const base2 = String(d2?.url || '').replace(/\/$/, '');
-    const route1 = d1?.routeLogs ? String(d1.routeLogs) : '/__client-logs';
-    const route2 = d2?.routeLogs ? String(d2.routeLogs) : '/__client-logs';
+    const route1 = d1?.route ? String(d1.route) : '/__client-logs';
+    const route2 = d2?.route ? String(d2.route) : '/__client-logs';
     expect(base1).toBeTruthy();
     expect(base2).toBeTruthy();
 

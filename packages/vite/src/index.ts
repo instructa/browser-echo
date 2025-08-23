@@ -1,7 +1,7 @@
 // Avoid exporting Vite types to prevent cross-version type mismatches in consumers
 import ansis from 'ansis';
 import type { BrowserLogLevel } from '@browser-echo/core';
-import { mkdirSync, appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { mkdirSync, appendFileSync, existsSync, readFileSync, watch as fsWatch } from 'node:fs';
 import { join as joinPath, dirname } from 'node:path';
 
 export interface BrowserLogsToTerminalOptions {
@@ -97,7 +97,7 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
   const logFilePath = joinPath(options.fileLog.dir, `dev-${sessionStamp}.log`);
   if (options.fileLog.enabled) { try { mkdirSync(dirname(logFilePath), { recursive: true }); } catch {} }
 
-  // Simplified MCP ingest resolution: project JSON once; fallback to 5179; retry on failure
+  // Simplified MCP ingest resolution: project JSON once; no fallback; retry on failure
   let resolvedBase = '';
   let resolvedIngest = '';
   let lastAnnouncement = '';
@@ -121,10 +121,15 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
 
   function readProjectJson(): { url: string; route?: `/${string}` } | null {
     try {
-      const p = joinPath(process.cwd(), '.browser-echo.json');
+      const p = joinPath(process.cwd(), '.browser-echo-mcp.json');
       if (existsSync(p)) {
         const raw = readFileSync(p, 'utf-8');
-        const data = JSON.parse(raw);
+        let data: any;
+        try { data = JSON.parse(raw); }
+        catch (err: any) {
+          try { server.config.logger.warn(`${options.tag} failed to parse .browser-echo-mcp.json: ${err?.message || err}`); } catch {}
+          return null;
+        }
         const url = (data?.url ? String(data.url) : '').replace(/\/$/, '');
         const route = (data?.route ? String(data.route) : '/__client-logs') as `/${string}`;
         if (url) return { url, route };
@@ -134,6 +139,15 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
   }
 
   async function resolveOnce() {
+    // Prefer explicit plugin option if provided
+    if (options.mcp.url) {
+      const base = String(options.mcp.url).replace(/\/$/, '').replace(/\/mcp$/i, '');
+      resolvedBase = base;
+      resolvedIngest = `${base}${options.mcp.routeLogs}`;
+      announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
+      return;
+    }
+
     const cfg = readProjectJson();
     if (cfg && cfg.url) {
       const base = String(cfg.url).replace(/\/$/, '');
@@ -144,21 +158,21 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
         return;
       }
     }
-    // Fallback to 5179 once
-    for (const host of ['http://127.0.0.1:5179', 'http://localhost:5179']) {
-      if (await tryPingHealth(host, 200)) {
-        resolvedBase = host;
-        resolvedIngest = `${host}${options.route}`;
-        announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
-        return;
-      }
-    }
     resolvedBase = '';
     resolvedIngest = '';
   }
 
-  // Resolve once at startup
+  // Resolve once at startup and watch for project json changes to re-resolve
   resolveOnce();
+  try {
+    const cfgPath = joinPath(process.cwd(), '.browser-echo-mcp.json');
+    if (existsSync(cfgPath)) {
+      try { fsWatch(cfgPath, { persistent: false }, () => { try { resolveOnce(); } catch {} }); } catch {}
+    } else {
+      const parent = process.cwd();
+      try { fsWatch(parent, { persistent: false }, (_evt: string, file?: string) => { if (String(file || '') === '.browser-echo-mcp.json') { try { resolveOnce(); } catch {} } }); } catch {}
+    }
+  } catch {}
 
   server.middlewares.use(options.route, (req: import('http').IncomingMessage, res: import('http').ServerResponse, next: Function) => {
     if (req.method !== 'POST') return next();
@@ -185,7 +199,7 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
       }
 
       const logger = server.config.logger;
-      const suppressTerminal = !!targetIngest; // suppress when forwarding active
+      const suppressTerminal = options.mcp.suppressProvided ? (options.mcp.suppressTerminal && !!targetIngest) : !!targetIngest;
       const shouldPrint = !suppressTerminal;
       const sid = (payload.sessionId ?? 'anon').slice(0, 8);
       for (const entry of payload.entries) {

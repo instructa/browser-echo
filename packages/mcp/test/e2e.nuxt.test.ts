@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { writeFileSync, rmSync, mkdtempSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { startMcpServer } from '../src/index';
 import { createApp, createRouter, toNodeListener } from 'h3';
 import { createServer } from 'node:http';
@@ -12,16 +15,25 @@ function makeEvent() { return {} as any; }
 
 describe('E2E: Nuxt handler → MCP ingest', () => {
   const oldEnv = { ...process.env } as any;
+  let oldCwd: string;
+  let workDir: string;
   let handler: (e: any) => Promise<any>;
   beforeAll(async () => {
     await startMcpServer({ host: HOST, port: PORT, endpoint: '/mcp', logsRoute: '/__client-logs' });
-    process.env.BROWSER_ECHO_MCP_URL = BASE;
+    // Use isolated cwd and write project json so Nuxt handler forwards to our test server
+    oldCwd = process.cwd();
+    workDir = mkdtempSync(join(tmpdir(), 'be-nuxt-e2e-'));
+    process.chdir(workDir);
+    const disc = join(workDir, '.browser-echo-mcp.json');
+    writeFileSync(disc, JSON.stringify({ url: BASE, route: '/__client-logs', timestamp: Date.now() }));
     const mod: any = await import('../../nuxt/src/runtime/server/handler');
     handler = mod.default || mod;
   }, 30_000);
 
   afterAll(async () => {
     process.env = oldEnv;
+    try { rmSync(join(workDir, '.browser-echo-mcp.json')); } catch {}
+    try { process.chdir(oldCwd); } catch {}
   });
 
   it('flushes an error entry to MCP', async () => {

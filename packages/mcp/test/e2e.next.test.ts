@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { writeFileSync, rmSync, mkdtempSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { startMcpServer } from '../src/index';
 
 const HOST = '127.0.0.1';
@@ -8,16 +11,25 @@ const BASE = `http://${HOST}:${PORT}`;
 describe('E2E: Next route → MCP ingest', () => {
   const oldEnv = { ...process.env } as any;
   let POST: (req: any) => Promise<any>;
+  let oldCwd: string;
+  let workDir: string;
   beforeAll(async () => {
     await startMcpServer({ name: 'tests', version: 'test', host: HOST, port: PORT, endpoint: '/mcp', logsRoute: '/__client-logs' });
-    process.env.BROWSER_ECHO_MCP_URL = BASE; // ensure route forwards
-    // Import after setting env so the route reads the configured MCP URL
+    // Use isolated cwd per suite and write project json so Next route forwards to our test server
+    oldCwd = process.cwd();
+    workDir = mkdtempSync(join(tmpdir(), 'be-next-e2e-'));
+    process.chdir(workDir);
+    const disc = join(workDir, '.browser-echo-mcp.json');
+    writeFileSync(disc, JSON.stringify({ url: BASE, route: '/__client-logs', timestamp: Date.now() }));
+    // Import after writing json so the route reads the configured MCP URL
     const mod: any = await import('../../next/src/route');
     POST = mod.POST;
   }, 30_000);
 
   afterAll(async () => {
     process.env = oldEnv;
+    try { rmSync(join(workDir, '.browser-echo-mcp.json')); } catch {}
+    try { process.chdir(oldCwd); } catch {}
   });
 
   it('forwards an error log to MCP', async () => {

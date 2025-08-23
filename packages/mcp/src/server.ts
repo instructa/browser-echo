@@ -89,7 +89,7 @@ export async function stopServer(server: McpServer) {
   }
   finally {
     // Best-effort cleanup of project JSON
-    try { rmSync(joinPath(process.cwd(), '.browser-echo.json'), { force: true }); } catch {}
+    try { rmSync(joinPath(process.cwd(), '.browser-echo-mcp.json'), { force: true }); } catch {}
     process.exit(0);
   }
 }
@@ -225,8 +225,8 @@ export async function startHttpServer(
   } catch {}
 
   await new Promise<void>((resolve) => nodeServer.listen(opts.port, opts.host, () => resolve()));
-  // Write project-local config for providers
-  writeProjectJson(opts.host, opts.port, opts.logsRoute);
+  // For Streamable HTTP, we intentionally do not write project JSON here. The per-project
+  // source of truth is written by the stdio ingest server only.
 
   // eslint-disable-next-line no-console
   console.log(`MCP (Streamable HTTP) listening → http://${opts.host}:${opts.port}${opts.endpoint}`);
@@ -329,7 +329,7 @@ function writeProjectJson(host: string, port: number, route: `/${string}`) {
   try {
     const baseUrl = `http://${host}:${port}`;
     const payload = JSON.stringify({ url: baseUrl, route, timestamp: Date.now(), pid: typeof process !== 'undefined' ? process.pid : undefined });
-    const file = joinPath(process.cwd(), '.browser-echo.json');
+    const file = joinPath(process.cwd(), '.browser-echo-mcp.json');
     const tmp = file + '.tmp';
     try { writeFileSync(tmp, payload); renameSync(tmp, file); }
     catch { try { writeFileSync(file, payload); } catch {} }

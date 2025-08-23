@@ -15,13 +15,14 @@ vi.mock('h3', async () => {
 import handler from '../src/runtime/server/handler';
 
 it('prints forwarded logs and returns 204', async () => {
+  const i = vi.spyOn(console, 'log').mockImplementation(() => {});
   const w = vi.spyOn(console, 'warn').mockImplementation(() => {});
   const e = {} as any;
   const res = await handler(e);
   expect(e.status).toBe(204);
   expect(res).toBe('');
-  expect(w).toHaveBeenCalled();
-  w.mockRestore();
+  expect(i.mock.calls.length + w.mock.calls.length).toBeGreaterThan(0);
+  i.mockRestore(); w.mockRestore();
 });
 
 it('returns 400 on invalid JSON', async () => {
@@ -45,8 +46,10 @@ it('normalizes MCP URL (strips /mcp) and forwards to ingest', async () => {
     if (u.endsWith('/health')) return { ok: true } as any;
     return { ok: true } as any;
   }) as any;
-  const old = process.env.BROWSER_ECHO_MCP_URL;
-  process.env.BROWSER_ECHO_MCP_URL = 'http://localhost:5179/mcp';
+  const baseDir = mkdtempSync(join(tmpdir(), 'be-nuxt-url-'));
+  const oldCwd = process.cwd();
+  process.chdir(baseDir);
+  writeFileSync(join(baseDir, '.browser-echo-mcp.json'), JSON.stringify({ url: 'http://localhost:5179/mcp', route: '/__client-logs', timestamp: Date.now() }));
   try {
     vi.resetModules();
     const mod = await import('../src/runtime/server/handler');
@@ -58,12 +61,13 @@ it('normalizes MCP URL (strips /mcp) and forwards to ingest', async () => {
     expect(res).toBe('');
     expect(calls.some((u) => u === 'http://localhost:5179/__client-logs')).toBe(true);
   } finally {
-    process.env.BROWSER_ECHO_MCP_URL = old;
+    process.chdir(oldCwd);
+    try { rmSync(baseDir, { recursive: true, force: true }); } catch {}
     globalThis.fetch = REAL_FETCH;
   }
 });
 
-it('falls back to localhost when 127.0.0.1:5179 is unhealthy', async () => {
+it('does not fall back to 5179; prints when no project JSON present (dev only)', async () => {
   const REAL_FETCH = globalThis.fetch as any;
   globalThis.fetch = vi.fn(async () => ({ ok: true } as any)) as any;
   try {
@@ -75,7 +79,7 @@ it('falls back to localhost when 127.0.0.1:5179 is unhealthy', async () => {
     const res: any = await mod.default(e);
     expect(e.status).toBe(204);
     expect(res).toBe('');
-    expect(w).not.toHaveBeenCalled();
+    expect(w).toHaveBeenCalled();
   } finally {
     globalThis.fetch = REAL_FETCH;
   }
