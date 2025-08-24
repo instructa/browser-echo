@@ -31,7 +31,7 @@ Once your framework is set up and forwarding logs, install the Browser Echo MCP 
   "mcpServers": {
     "browser-echo": {
       "command": "npx",
-      "args": ["-y","@browser-echo/mcp"]
+      "args": ["@browser-echo/mcp"]
     }
   }
 }
@@ -51,7 +51,7 @@ Add to your `.cursor/mcp.json`:
   "mcpServers": {
     "browser-echo": {
       "command": "npx",
-      "args": ["-y","@browser-echo/mcp"]
+      "args": ["@browser-echo/mcp"]
     }
   }
 }
@@ -63,7 +63,7 @@ Add to your `.cursor/mcp.json`:
 Add to your Claude Desktop MCP config:
 
 ```json
-claude mcp add browser-echo-mcp npx -y @browser-echo/mcp
+claude mcp add browser-echo-mcp npx @browser-echo/mcp
 ```
 
 
