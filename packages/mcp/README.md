@@ -43,10 +43,9 @@ Once your framework is set up and forwarding logs, install the Browser Echo MCP 
 
 ### Cursor
 
-[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=browser-echo&config=eyJjb21tYW5kIjoibnB4IEBicm93c2VyLWVjaG8vbWNwIn0%3D)
+<!-- [![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=browser-echo&config=eyJjb21tYW5kIjoibnB4IEBicm93c2VyLWVjaG8vbWNwIn0%3D) -->
 
-<details>
-<summary>Manual Install</summary>
+
 
 Add to your `.cursor/mcp.json`:
 
@@ -60,7 +59,6 @@ Add to your `.cursor/mcp.json`:
   }
 }
 ```
-</details>
 
 ### Claude Code
 

@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "browser-echo": {
-      "command": "node",
-      "args": ["packages/mcp/bin/cli.mjs"]
-    }
-  }
-}
