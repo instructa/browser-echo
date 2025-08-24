@@ -1,6 +1,6 @@
 {
   "name": "@browser-echo/react",
-  "version": "0.0.6",
+  "version": "1.0.0",
   "type": "module",
   "sideEffects": false,
   "repository": {
@@ -26,7 +26,7 @@
     "react-dom": ">=18.0.0"
   },
   "dependencies": {
-    "@browser-echo/core": "workspace:*"
+    "@browser-echo/core": "^1.0.0"
   },
   "scripts": {
     "build": "unbuild",
