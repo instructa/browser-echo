@@ -112,27 +112,27 @@ it('does not fall back to 5179; prints when no project JSON present', async () =
   }
 });
 
-it('walks up directories to find project-local discovery file', async () => {
+it('walks up directories to find discovery file and forwards', async () => {
   const REAL_FETCH = globalThis.fetch as any;
-  globalThis.fetch = vi.fn(async () => ({ ok: true } as any)) as any;
+  const calls: string[] = [];
+  globalThis.fetch = vi.fn(async (url: any) => {
+    const u = String(url); calls.push(u);
+    if (u.endsWith('/health')) return { ok: true } as any;
+    return { ok: true } as any;
+  }) as any;
   const oldCwd = process.cwd();
   const base = mkdtempSync(join(tmpdir(), 'be-next-walk-'));
   const sub = join(base, 'a', 'b');
   mkdirSync(sub, { recursive: true });
   try {
-    writeFileSync(join(base, '.browser-echo-mcp.json'), JSON.stringify({ url: 'http://127.0.0.1:59998', routeLogs: '/__client-logs', timestamp: Date.now() }));
+    writeFileSync(join(base, '.browser-echo-mcp.json'), JSON.stringify({ url: 'http://127.0.0.1:59998', route: '/__client-logs', timestamp: Date.now() }));
     process.chdir(sub);
     vi.resetModules();
     const mod = await import('../src/route');
-    const i = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const w = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const e = vi.spyOn(console, 'error').mockImplementation(() => {});
     const req: any = { json: async () => ({ sessionId: 'walkbeef', entries: [{ level: 'error', text: 'z' }] }) };
     const res: any = await mod.POST(req);
     expect((res as any).status).toBe(204);
-    // With the new model, only project root is considered; printing may still happen here
-    expect(i.mock.calls.length + w.mock.calls.length + e.mock.calls.length).toBeGreaterThan(0);
-    i.mockRestore(); w.mockRestore(); e.mockRestore();
+    expect(calls.some((u) => u === 'http://127.0.0.1:59998/__client-logs')).toBe(true);
   } finally {
     process.chdir(oldCwd);
     try { rmSync(base, { recursive: true, force: true }); } catch {}

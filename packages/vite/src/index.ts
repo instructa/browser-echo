@@ -121,18 +121,24 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
 
   function readProjectJson(): { url: string; route?: `/${string}` } | null {
     try {
-      const p = joinPath(process.cwd(), '.browser-echo-mcp.json');
-      if (existsSync(p)) {
-        const raw = readFileSync(p, 'utf-8');
-        let data: any;
-        try { data = JSON.parse(raw); }
-        catch (err: any) {
-          try { server.config.logger.warn(`${options.tag} failed to parse .browser-echo-mcp.json: ${err?.message || err}`); } catch {}
-          return null;
+      let dir = process.cwd();
+      for (let depth = 0; depth < 10; depth++) {
+        const p = joinPath(dir, '.browser-echo-mcp.json');
+        if (existsSync(p)) {
+          const raw = readFileSync(p, 'utf-8');
+          let data: any;
+          try { data = JSON.parse(raw); }
+          catch (err: any) {
+            try { server.config.logger.warn(`${options.tag} failed to parse .browser-echo-mcp.json: ${err?.message || err}`); } catch {}
+            return null;
+          }
+          const url = (data?.url ? String(data.url) : '').replace(/\/$/, '');
+          const route = (data?.route ? String(data.route) : '/__client-logs') as `/${string}`;
+          if (url && /^(http:\/\/127\.0\.0\.1|http:\/\/localhost)/.test(url)) return { url, route };
         }
-        const url = (data?.url ? String(data.url) : '').replace(/\/$/, '');
-        const route = (data?.route ? String(data.route) : '/__client-logs') as `/${string}`;
-        if (url) return { url, route };
+        const up = dirname(dir);
+        if (up === dir) break;
+        dir = up;
       }
     } catch {}
     return null;
@@ -175,7 +181,11 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
       if (!payload || !Array.isArray(payload.entries)) { res.statusCode = 400; res.end('invalid payload'); return; }
 
       // Mirror to MCP server if configured
-      const targetIngest = resolvedIngest || '';
+      let targetIngest = resolvedIngest || '';
+      if (!targetIngest) {
+        try { await resolveOnce(); } catch {}
+        targetIngest = resolvedIngest || '';
+      }
       if (targetIngest) {
         try {
           // do not await

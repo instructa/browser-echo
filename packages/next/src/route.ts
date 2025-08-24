@@ -78,17 +78,24 @@ function dim(s: string) { return c.dim + s + c.reset; }
 async function __resolveMcpFromProject(): Promise<{ url: string; routeLogs?: `/${string}` }> {
   try {
     const { readFileSync, existsSync } = await import('node:fs');
-    const { join } = await import('node:path');
-    const p = join(process.cwd(), '.browser-echo-mcp.json');
-    if (existsSync(p)) {
-      const raw = readFileSync(p, 'utf-8');
-      const data = JSON.parse(raw);
-      const rawUrl = (data?.url ? String(data.url) : '');
-      const url = rawUrl.replace(/\/$/, '').replace(/\/mcp$/i, '');
-      const routeLogs = (data?.route ? String(data.route) : '/__client-logs') as `/${string}`;
-      if (url && await __pingHealth(`${url}/health`, 250)) {
-        return { url, routeLogs };
+    const { join, dirname } = await import('node:path');
+    let dir = process.cwd();
+    for (let depth = 0; depth < 10; depth++) {
+      const p = join(dir, '.browser-echo-mcp.json');
+      if (existsSync(p)) {
+        const raw = readFileSync(p, 'utf-8');
+        const data = JSON.parse(raw);
+        const rawUrl = (data?.url ? String(data.url) : '');
+        const base = rawUrl.replace(/\/$/, '').replace(/\/mcp$/i, '');
+        if (!/^(http:\/\/127\.0\.0\.1|http:\/\/localhost)/.test(base)) break;
+        const routeLogs = (data?.route ? String(data.route) : '/__client-logs') as `/${string}`;
+        if (base && await __pingHealth(`${base}/health`, 250)) {
+          return { url: base, routeLogs };
+        }
       }
+      const up = dirname(dir);
+      if (up === dir) break;
+      dir = up;
     }
   } catch {}
   return { url: '' } as any;
