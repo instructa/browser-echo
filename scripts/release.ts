@@ -239,6 +239,7 @@ function restoreWorkspaceDependencies(packages: Array<{ path: string; name: stri
 function generateReleaseNotes(packages: Array<{ name: string; version: string }>, version: string, isAlpha: boolean): string {
   const releaseType = isAlpha ? 'Alpha Release' : 'Release'
   const packageList = packages.map(pkg => `- \`${pkg.name}@${pkg.version}\``).join('\n')
+  const firstPackage = packages[0]?.name || '@browser-echo/core'
   
   return `# ${releaseType} v${version}
 
@@ -252,13 +253,13 @@ You can install any of these packages using your preferred package manager:
 
 \`\`\`bash
 # npm
-npm install ${packages[0].name}
+npm install ${firstPackage}
 
 # pnpm  
-pnpm add ${packages[0].name}
+pnpm add ${firstPackage}
 
 # yarn
-yarn add ${packages[0].name}
+yarn add ${firstPackage}
 \`\`\`
 
 ${isAlpha ? '⚠️ **Note**: This is an alpha release and may contain experimental features.' : ''}
@@ -450,11 +451,12 @@ async function publishPackages() {
     }
     
     throw error
-  } finally {
-    // Always restore workspace dependencies after publishing
-    if (updatedPackages.length > 0) {
-      restoreWorkspaceDependencies(updatedPackages)
-    }
+  }
+  
+  // Restore workspace dependencies only after successful publish
+  console.log('✅ All packages published successfully!')
+  if (updatedPackages.length > 0) {
+    restoreWorkspaceDependencies(updatedPackages)
   }
 }
 
