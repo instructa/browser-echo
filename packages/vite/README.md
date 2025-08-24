@@ -140,7 +140,6 @@ interface BrowserEchoViteOptions {
   };
   discoverMcp?: boolean;             // Enable MCP auto-discovery (default: true)
   discoveryRefreshMs?: number;       // Discovery refresh interval (default: 30000)
-  discoveryPorts?: number[];         // (Deprecated) No longer used; discovery tries 5179 in dev, then local file
 }
 ```
 
@@ -188,8 +187,7 @@ browserEcho({
 
 #### Discovery behavior
 
-- Discovery order: `BROWSER_ECHO_MCP_URL` → port 5179 (dev) → project-local `.browser-echo-mcp.json`.
-- Tmp discovery and multi-port scanning have been removed for simplicity and safety.
+Discovery order: `BROWSER_ECHO_MCP_URL` → port 5179 (dev) → project-local `.browser-echo-mcp.json`.
 
 ## File Logging (Vite-only feature)
 

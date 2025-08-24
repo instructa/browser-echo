@@ -48,16 +48,30 @@ initBrowserEcho({
 
 ## Options
 
+Most providers accept these options (names may appear as plugin options or component props):
+
 ```ts
-interface InitBrowserEchoOptions {
-  route?: `/${string}`;              // default: '/__client-logs'
+type BrowserLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
+
+interface BrowserEchoOptions {
+  enabled?: boolean;                 // default: true (dev only)
+  route?: `/${string}`;              // default: '/api/client-logs' (Next), '/__client-logs' (others)
   include?: BrowserLogLevel[];       // default: ['log','info','warn','error','debug']
-  preserveConsole?: boolean;         // default: true (also keep logging in browser)
+  preserveConsole?: boolean;         // default: true (also keep logging in the browser)
   tag?: string;                      // default: '[browser]'
+  // stacks
+  stackMode?: 'none' | 'condensed' | 'full'; // default: 'full' (provider-specific; Vite supports all)
+  showSource?: boolean;              // default: true (when available)
+  // batching
   batch?: { size?: number; interval?: number }; // default: 20 / 300ms
-  stackMode?: 'full' | 'condensed' | 'none';    // default: 'condensed'
+  // server-side
+  truncate?: number;                 // default: 10_000 chars (Vite)
+  fileLog?: { enabled?: boolean; dir?: string }; // Vite-only
 }
 ```
+
+> Note: File logging and `truncate` are currently implemented in the Vite plugin's dev server middleware. Nuxt/Next providers print to stdout by default (you can extend them if you need file output there).
+
 
 ## Framework Providers
 

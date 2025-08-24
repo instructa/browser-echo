@@ -1,5 +1,7 @@
 # @browser-echo/mcp
 
+![Browser Echo MCP](../../public/browser-echo-mcp-banner.png)
+
 MCP (Model Context Protocol) server for Browser Echo — enables AI assistants to directly access and analyze your frontend browser console logs using natural language commands.
 
 ## Example Usage
@@ -21,6 +23,8 @@ Your AI assistant will automatically use the appropriate MCP tools to fetch and 
 
 **📖 [Choose your framework and complete setup first](../README.md#quick-start)**
 
+> **💡 Configuration Tip:** Set `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` in your framework environment to explicitly configure MCP forwarding. See [Environment Variables](#environment-variables) for full configuration options.
+
 Once your framework is set up and forwarding logs, install the Browser Echo MCP server with your client. Using stdio transport.
 
 **Standard config** works in most of the tools:
@@ -39,7 +43,7 @@ Once your framework is set up and forwarding logs, install the Browser Echo MCP 
 
 ### Cursor
 
-[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=browser-echo&config=eyJjb21tYW5kIjoibnB4IC15IEBicm93c2VyLWVjaG8vbWNwIn0%3D)
+[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=browser-echo&config=eyJjb21tYW5kIjoibnB4IEBicm93c2VyLWVjaG8vbWNwIn0%3D)
 
 <details>
 <summary>Manual Install</summary>
@@ -109,14 +113,14 @@ Follow the MCP Servers [documentation](https://opencode.ai/docs/mcp-servers/). F
 
 #### Or install manually:
 
-Follow the MCP install [guide](https://code.visualstudio.com/docs/copilot/chat/mcp-servers#_add-an-mcp-server), use the standard config above. You can also install the Playwright MCP server using the VS Code CLI:
+Follow the MCP install [guide](https://code.visualstudio.com/docs/copilot/chat/mcp-servers#_add-an-mcp-server), use the standard config above. You can also install the Browser Echo MCP server using the VS Code CLI:
 
 ```bash
 # For VS Code
 code --add-mcp '{"name":"browser-echo","command":"npx","args":["@browser-echo/mcp@latest"]}'
 ```
 
-After installation, the Playwright MCP server will be available for use with your GitHub Copilot agent in VS Code.
+After installation, the Browser Echo MCP server will be available for use with your GitHub Copilot agent in VS Code.
 </details>
 
 <details>
@@ -396,10 +400,13 @@ publishLogEntry({
 
 ## Environment Variables
 
-- `BROWSER_ECHO_BUFFER_SIZE` — Max entries in memory (default: `1000`)
-- `BROWSER_ECHO_MCP_URL` — MCP server URL for framework forwarding (if set, frameworks bypass discovery)
-- `BROWSER_ECHO_INGEST_PORT` — Force a fixed ingest port in stdio mode (default: 5179 preferred)
-<!-- Tmp discovery and multi-port scanning removed from defaults -->
+Configure the MCP server behavior with these environment variables:
+
+- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — MCP server URL for framework forwarding (if set, frameworks bypass auto-discovery)
+- `BROWSER_ECHO_BUFFER_SIZE=1000` — Max entries kept in memory (default: `1000`)
+- `BROWSER_ECHO_INGEST_PORT=5179` — Force a fixed ingest port in stdio mode (default: 5179)
+- `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Force suppress terminal output when MCP is forwarding logs
+- `BROWSER_ECHO_SUPPRESS_TERMINAL=0` — Force show terminal output even when MCP is active
 
 ---
 

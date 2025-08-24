@@ -1,10 +1,8 @@
-# Browser Echo
+# Browser Echo MCP
 
-![Browser Echo](public/banner.png)
+![Browser Echo MCP](public/browser-echo-mcp-banner.png)
 
-Stream browser `console.*` logs to your dev terminal and optional file logging.
-
-`browser-echo` makes it easy for you (and your AI coding assistant) to read client-side logs directly in the server terminal during development.
+`browser-echo` makes it easy for you to read client-side logs directly in your coding agent during development.
 
 ## Features
 
@@ -12,7 +10,6 @@ Stream browser `console.*` logs to your dev terminal and optional file logging.
 
 🚀 **Framework Support** - React, Vue, Nuxt 3/4, Next.js, TanStack Start, Vite-based frameworks, and custom setups
 
-No production impact. Providers enable this across frameworks by injecting a tiny client patch and exposing a dev-only HTTP endpoint.
 
 ## Quick start
 
@@ -31,15 +28,22 @@ First, set up Browser Echo for your framework:
 | React (non-Vite) | [Installation Guide](packages/react/README.md) |
 | Core | [Installation Guide](packages/core/README.md) |
 
-> Framework users only install their provider + `@browser-echo/core`. No cross‑framework bloat.
+#### 2. Use Browser Echo MCP
 
-#### 2. Use Browser Echo MCP (Optional)
-
-**⚠️ IMPORTANT:** You **must complete step 1** (framework setup) first before MCP will work. The MCP server needs your framework to forward browser logs to it.
+**⚠️ IMPORTANT:** You **must complete step 1** (framework setup) first before MCP will work. The MCP server needs your frameworks server to forward browser logs to it.
 
 **📖 [Set up Browser Echo MCP Server](packages/mcp/README.md)** for AI assistant integration
 
-## What you get
+## Browser Echo Core (Terminal only)
+
+![Browser Echo](public/banner.png)
+
+Stream browser `console.*` logs to your dev terminal and optional file logging.
+
+`browser-echo` makes it easy for you (and your AI coding assistant) to read client-side logs directly in the server terminal during development.
+
+> 💡 **Tip**: The MCP server isn't required for most use cases. AI assistants are usually smart enough to read CLI output directly, and the terminal solution is often faster and cheaper than MCP integration. The MCP was designed to avoid polluting the context window, but in most cases the terminal output is sufficient.
+
 
 - Drop‑in client patch that wraps `console.log/info/warn/error/debug`
 - Batched posts (uses `sendBeacon` when possible)
@@ -47,90 +51,81 @@ First, set up Browser Echo for your framework:
 - Colorized terminal output
 - Optional file logging (Vite provider only)
 - Works great with AI assistants reading your terminal
-- **NEW:** MCP (Model Context Protocol) support for enhanced AI assistant integration
-
-## Browser Echo MCP Server
-
-Browser Echo includes built-in MCP (Model Context Protocol) server support, enabling AI assistants like Claude (via Cursor) to interact with your frontend logs using natural language commands:
-
-- **"Check frontend logs"** - Retrieves recent console logs
-- **"Show only errors from the last 2 minutes"** - Filters by level and time
-- **"Find hydration mismatch warnings"** - Searches for specific content
-- **"Clear logs and start fresh"** - Clears the buffer for new captures
-- **"Focus on my current tab's logs"** - Filters by session
-
-The MCP server exposes two main tools:
-- `get_logs` - Fetch logs with extensive filtering (level, session, time, content)
-- `clear_logs` - Clear logs with soft/hard modes and session-specific clearing
-
-This integration makes debugging with AI assistants much more powerful - they can directly query and analyze your frontend logs without you having to copy/paste from the terminal.
-
-**📖 [Full MCP Setup Guide & Documentation](packages/mcp/README.md)**
-
-### MCP discovery and forwarding (Vite / Next / Nuxt)
-
-- By default, when an MCP server is detected, frameworks forward logs to MCP and **suppress local terminal output**. If MCP is not found, they log locally.
-- **Vite now auto‑discovers MCP** (no need to set `mcp.url`). It resolves in this order:
-  1. Explicit option/env: Vite plugin `mcp.url` or `BROWSER_ECHO_MCP_URL`
-  2. Discovery file written by the MCP server: `.browser-echo-mcp.json` (project root or OS tmp) containing `url` and `routeLogs`
-  3. Port scan of common local ports (127.0.0.1 / localhost)
-  4. Fallback to local terminal logging
-- **Terminal output control:**
-  - `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Force suppress terminal output (even when no MCP)
-  - `BROWSER_ECHO_SUPPRESS_TERMINAL=0` — Force show terminal output (even when MCP forwarding)
-  - Framework-specific options available (see individual framework package READMEs)
-
-## Options
-
-Most providers accept these options (names may appear as plugin options or component props):
-
-```ts
-type BrowserLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
-
-interface BrowserEchoOptions {
-  enabled?: boolean;                 // default: true (dev only)
-  route?: `/${string}`;              // default: '/api/client-logs' (Next), '/__client-logs' (others)
-  include?: BrowserLogLevel[];       // default: ['log','info','warn','error','debug']
-  preserveConsole?: boolean;         // default: true (also keep logging in the browser)
-  tag?: string;                      // default: '[browser]'
-  // stacks
-  stackMode?: 'none' | 'condensed' | 'full'; // default: 'full' (provider-specific; Vite supports all)
-  showSource?: boolean;              // default: true (when available)
-  // batching
-  batch?: { size?: number; interval?: number }; // default: 20 / 300ms
-  // server-side
-  truncate?: number;                 // default: 10_000 chars (Vite)
-  fileLog?: { enabled?: boolean; dir?: string }; // Vite-only
-}
-```
-
-> Note: File logging and `truncate` are currently implemented in the Vite plugin’s dev server middleware. Nuxt/Next providers print to stdout by default (you can extend them if you need file output there).
 
 ## Production
+
+No production impact. Providers enable this across frameworks by injecting a tiny client patch and exposing a dev-only HTTP endpoint.
 
 * Providers apply only in development and inject nothing into your production client bundles.
 * If you also want to strip `console.*` in prod builds, use your bundler’s strip tools (e.g. Rollup plugin) separately.
 
-## Troubleshooting
+## FAQ / Troubleshooting
 
-* No logs appear
+<details>
+<summary>The MCP doesn't show any logs</summary>
 
-  * Vite: ensure plugin is added and either `index.html` exists or you import the virtual module manually.
-  * Nuxt: confirm the module is in `modules[]` and you’re in dev mode.
-* Next: make sure `app/api/client-logs/route.ts` is exported and `<BrowserEchoScript />` is rendered in `<head>`.
+1. **Make sure you have installed framework support** → See [Install Framework Package](#1-install-framework-package) above
+2. **Ensure your development server is running** before starting the MCP server
+3. **Restart the MCP server** if logs still don't appear:
+   - **In Cursor:** Settings → MCP & Integrations → toggle "browser-echo" off and on
+   - **In Claude Code:** Type `/mcp` → Choose "browser-echo" → Enter → Hit `2` to reconnect
 
-* Endpoint 404
+</details>
 
-  * Using a custom `base` or proxy? Keep the route same‑origin and not behind auth.
-  * Nuxt sometimes proxies dev servers; our module registers a Nitro route directly.
+<details>
+<summary>No logs appear (framework setup issues)</summary>
 
-* Too noisy
+* **Vite:** Ensure plugin is added and either `index.html` exists or you import the virtual module manually
+* **Nuxt:** Confirm the module is in `modules[]` and you're in dev mode
+* **Next.js:** Make sure `app/api/client-logs/route.ts` is exported and `<BrowserEchoScript />` is rendered in `<head>`
 
-  * Limit to `['warn','error']` and use `stackMode: 'condensed'`.
+</details>
 
-* Duplicate logs in browser
+<details>
+<summary>Getting 404 errors on log endpoints</summary>
 
-  * Set `preserveConsole: false`.
+* Using a custom `base` or proxy? Keep the route same‑origin and not behind auth
+* Nuxt sometimes proxies dev servers; our module registers a Nitro route directly
+
+</details>
+
+<details>
+<summary>Too many/noisy logs</summary>
+
+* Limit to `['warn','error']` and use `stackMode: 'condensed'`
+
+</details>
+
+<details>
+<summary>Seeing duplicate logs in browser</summary>
+
+* Set `preserveConsole: false` in your configuration
+
+</details>
+
+<details>
+<summary>I see logs from other running projects (multiple client setup)</summary>
+
+If you're running multiple MCP servers in different projects and seeing logs from unrelated projects, ensure each project has its own `.browser-echo-mcp.json` file in its root directory:
+
+1. **Check for ancestor config files**: Look for `.browser-echo-mcp.json` files in parent directories (e.g., `~/projects/.browser-echo-mcp.json`). If found, delete them or move them to specific project roots.
+
+2. **Use distinct ports**: Start each MCP server with a unique port:
+   ```bash
+   # In project A
+   browser-echo-mcp --port 5179
+
+   # In project B
+   browser-echo-mcp --port 5180
+   ```
+
+3. **Verify project isolation**: Ensure each MCP server was started from within its own project directory (not from a shared parent).
+
+4. **Check process CWD**: If using IDE integrations or task runners, make sure each MCP server process has its `CWD` set to the individual project root.
+
+If the issue persists after following these steps, please [open an issue on GitHub](https://github.com/regenrek/vite-browser-logs/issues) with details about your setup.
+
+</details>
 
 ## License
 
