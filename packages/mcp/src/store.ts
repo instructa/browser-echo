@@ -8,6 +8,8 @@ export interface LogEntry {
   source?: string;
   stack?: string;
   tag?: string;
+  /** Optional project name/identifier for multi-project segregation */
+  project?: string;
 }
 
 const DEFAULT_BUFFER = 1000;

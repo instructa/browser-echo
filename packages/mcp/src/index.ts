@@ -41,10 +41,12 @@ const cli = defineCommand({
       process.env.BROWSER_ECHO_BUFFER_SIZE = String(args.buffer);
     }
 
-    // Determine transport: stdio by default, or HTTP if --http or network options provided
-    const useHttp = args.http 
-      || args.port !== '5179' || args.host !== '127.0.0.1' 
-      || args.endpoint !== '/mcp' || args.logsRoute !== '/__client-logs';
+    // Transport auto-detection:
+    // - Prefer Streamable HTTP when running interactively in a terminal (TTY)
+    // - Fall back to stdio when not attached to a TTY (e.g., spawned by an editor/agent)
+    // - Respect --http to force HTTP regardless of TTY
+    const isInteractiveTty = Boolean((process as any).stdout?.isTTY) && Boolean((process as any).stdin?.isTTY);
+    const useHttp = Boolean(args.http) || isInteractiveTty;
 
     // Start server with selected transport. Prefer 5179 for ingest if stdio.
     await startServer(mcp, useHttp ? {
@@ -116,6 +118,7 @@ export function publishLogEntry(entry: {
   source?: string;
   stack?: string;
   tag?: string;
+  project?: string;
 }): void {
   if (!entry.text || !entry.level) {
     console.error('[browser-echo] Missing required fields for publishLogEntry');
@@ -129,7 +132,8 @@ export function publishLogEntry(entry: {
     time: entry.time ?? Date.now(),
     source: entry.source,
     stack: entry.stack,
-    tag: entry.tag || '[browser]'
+    tag: entry.tag || '[browser]',
+    project: entry.project
   };
   if (!activeStore) {
     console.error('[browser-echo] No active MCP server to publish log entry');

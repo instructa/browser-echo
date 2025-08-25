@@ -88,8 +88,6 @@ export async function stopServer(server: McpServer) {
     console.error('Error occurred during server stop:', error);
   }
   finally {
-    // Best-effort cleanup of project JSON
-    try { rmSync(joinPath(process.cwd(), '.browser-echo-mcp.json'), { force: true }); } catch {}
     process.exit(0);
   }
 }
@@ -224,7 +222,27 @@ export async function startHttpServer(
     });
   } catch {}
 
-  await new Promise<void>((resolve) => nodeServer.listen(opts.port, opts.host, () => resolve()));
+  // Attempt to listen on the requested port (fail fast if already in use)
+  try {
+    await new Promise<void>((resolve, reject) => {
+      nodeServer.listen(opts.port, opts.host, () => resolve());
+      nodeServer.on('error', reject);
+    });
+  } catch (err: any) {
+    const isAddrInUse = err && (err.code === 'EADDRINUSE' || String(err.message || '').includes('EADDRINUSE'));
+    if (isAddrInUse) {
+      const errorMsg = [
+        `Failed to start MCP server: Port ${opts.port} is already in use.`,
+        `Another instance may be running. Please either:`,
+        `  - Stop the other instance, or`,
+        `  - Use a different port with --port flag`
+      ].join('\n');
+      console.error(errorMsg);
+      process.exit(1);
+    }
+    throw err;
+  }
+
   // For Streamable HTTP, we intentionally do not write project JSON here. The per-project
   // source of truth is written by the stdio ingest server only.
 
@@ -299,7 +317,7 @@ export async function startIngestOnlyServer(
     });
   }
 
-  // Prefer requested port (usually 5179); fall back to ephemeral if it's taken
+  // Prefer requested port (usually 5179); do not fall back (single-server mode)
   let nodeServer = createNodeServer(toNodeListener(app));
   configureNodeServer(nodeServer);
 
@@ -308,33 +326,19 @@ export async function startIngestOnlyServer(
     actualPort = await listenWithResult(nodeServer, opts.host, opts.port);
   } catch (err: any) {
     const isAddrInUse = err && (err.code === 'EADDRINUSE' || String(err.message || '').includes('EADDRINUSE'));
-    if (isAddrInUse && opts.port !== 0) {
-      try { nodeServer.close?.(); } catch {}
-      nodeServer = createNodeServer(toNodeListener(app));
-      configureNodeServer(nodeServer);
-      actualPort = await listenWithResult(nodeServer, opts.host, 0);
-    } else {
-      throw err;
+    if (isAddrInUse) {
+      const base = `http://${opts.host}:${opts.port}`;
+      // eslint-disable-next-line no-console
+      console.error(`Failed to start ingest-only server: Port in use at ${base}${opts.logsRoute}`);
     }
+    throw err;
   }
-
-  // Write project-local config for providers
-  writeProjectJson(opts.host, actualPort, opts.logsRoute);
 
   // eslint-disable-next-line no-console
   console.error(`Log ingest endpoint        → http://${opts.host}:${actualPort}${opts.logsRoute}`);
 }
 
-function writeProjectJson(host: string, port: number, route: `/${string}`) {
-  try {
-    const baseUrl = `http://${host}:${port}`;
-    const payload = JSON.stringify({ url: baseUrl, route, timestamp: Date.now(), pid: typeof process !== 'undefined' ? process.pid : undefined });
-    const file = joinPath(process.cwd(), '.browser-echo-mcp.json');
-    const tmp = file + '.tmp';
-    try { writeFileSync(tmp, payload); renameSync(tmp, file); }
-    catch { try { writeFileSync(file, payload); } catch {} }
-  } catch {}
-}
+// Removed project JSON discovery in single-server mode
 
 /** Create log ingest routes that can be attached to any H3 app */
 function createLogIngestRoutes(store: LogStore, logsRoute: `/${string}`) {
@@ -361,6 +365,10 @@ function createLogIngestRoutes(store: LogStore, logsRoute: `/${string}`) {
         return 'invalid payload';
       }
       const sid = String(payload.sessionId ?? 'anon');
+      // Extract optional project metadata from headers
+      const hdrs = event.node.req.headers;
+      const projectHeader = (hdrs['x-browser-echo-project-name'] || hdrs['x-project-name'] || hdrs['x-project'] || '') as string | string[] | undefined;
+      const projectName = Array.isArray(projectHeader) ? String(projectHeader[0] || '') : String(projectHeader || '');
       for (const entry of payload.entries as Array<{ level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; }>) {
         const level = normalizeLevel(entry.level);
         store.append({
@@ -370,7 +378,8 @@ function createLogIngestRoutes(store: LogStore, logsRoute: `/${string}`) {
           time: entry.time,
           source: entry.source,
           stack: entry.stack,
-          tag: '[browser]'
+          tag: '[browser]',
+          project: projectName ? projectName : undefined
         });
       }
       setResponseStatus(event, 204);

@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
-// Simplified: resolve MCP from project-local JSON once; no fallback
+// Simplified: fixed single-server URL or env override
 
 export type BrowserLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
 type Entry = { level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; };
@@ -16,14 +16,17 @@ export async function POST(req: NextRequest) {
   catch { return new NextResponse('invalid JSON', { status: 400 }); }
   if (!payload || !Array.isArray(payload.entries)) return new NextResponse('invalid payload', { status: 400 });
 
-  // Resolve MCP once: project JSON only (no fallback)
-  const mcp = await __resolveMcpFromProject();
+  // Fixed resolution (single-server): env or default localhost:5179
+  const mcp = { url: (process.env.BROWSER_ECHO_MCP_URL || 'http://127.0.0.1:5179').replace(/\/$/, ''), routeLogs: '/__client-logs' } as const;
 
   // Forward to MCP server if available (fire-and-forget)
   if (mcp.url) {
     try {
       const route = (mcp.routeLogs as `/${string}`) || '/__client-logs';
       const headers: Record<string,string> = { 'content-type': 'application/json' };
+      // Derive project name from env or package name
+      const projectName = (process.env.BROWSER_ECHO_PROJECT_NAME || (process.env.npm_package_name || '')).trim();
+      if (projectName) headers['X-Browser-Echo-Project-Name'] = projectName;
       fetch(`${mcp.url}${route}`, {
         method: 'POST',
         headers,
@@ -74,41 +77,3 @@ function color(level: BrowserLogLevel, msg: string) {
   }
 }
 function dim(s: string) { return c.dim + s + c.reset; }
-
-async function __resolveMcpFromProject(): Promise<{ url: string; routeLogs?: `/${string}` }> {
-  try {
-    const { readFileSync, existsSync } = await import('node:fs');
-    const { join, dirname } = await import('node:path');
-    let dir = process.cwd();
-    for (let depth = 0; depth < 10; depth++) {
-      const p = join(dir, '.browser-echo-mcp.json');
-      if (existsSync(p)) {
-        const raw = readFileSync(p, 'utf-8');
-        const data = JSON.parse(raw);
-        const rawUrl = (data?.url ? String(data.url) : '');
-        const base = rawUrl.replace(/\/$/, '').replace(/\/mcp$/i, '');
-        if (!/^(http:\/\/127\.0\.0\.1|http:\/\/localhost)/.test(base)) break;
-        const routeLogs = (data?.route ? String(data.route) : '/__client-logs') as `/${string}`;
-        if (base && await __pingHealth(`${base}/health`, 250)) {
-          return { url: base, routeLogs };
-        }
-      }
-      const up = dirname(dir);
-      if (up === dir) break;
-      dir = up;
-    }
-  } catch {}
-  return { url: '' } as any;
-}
-
-async function __pingHealth(url: string, timeoutMs: number): Promise<boolean> {
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
-    const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' as any });
-    clearTimeout(t);
-    return res.ok;
-  } catch {
-    return false;
-  }
-}

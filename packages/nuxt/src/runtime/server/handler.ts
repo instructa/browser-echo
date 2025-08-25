@@ -1,5 +1,7 @@
 import { defineEventHandler, readBody, setResponseStatus } from 'h3';
 
+// Simplified: fixed single-server URL or env override
+
 // Simplified: resolve MCP from project-local JSON once; no fallback
 
 type Level = 'log' | 'info' | 'warn' | 'error' | 'debug';
@@ -15,14 +17,16 @@ export default defineEventHandler(async (event) => {
     setResponseStatus(event, 400); return 'invalid payload';
   }
 
-  // Resolve MCP once: project JSON only (no fallback)
-  const mcp = await __resolveMcpFromProjectNuxt();
+  // Fixed single-server: env or default localhost:5179
+  const mcp = { url: (process.env.BROWSER_ECHO_MCP_URL || 'http://127.0.0.1:5179').replace(/\/$/, ''), routeLogs: '/__client-logs' } as const;
 
   // Forward to MCP server if available (fire-and-forget)
   if (mcp.url) {
     try {
       const route = (mcp.routeLogs as `/${string}`) || '/__client-logs';
       const headers: Record<string,string> = { 'content-type': 'application/json' };
+      const projectName = (process.env.BROWSER_ECHO_PROJECT_NAME || (process.env.npm_package_name || '')).trim();
+      if (projectName) headers['X-Browser-Echo-Project-Name'] = projectName;
       fetch(`${mcp.url}${route}`, {
         method: 'POST',
         headers,
@@ -75,40 +79,3 @@ function color(level: Level, msg: string) {
   }
 }
 function dim(s: string) { return c.dim + s + c.reset; }
-
-async function __resolveMcpFromProjectNuxt(): Promise<{ url: string; routeLogs?: `/${string}` }> {
-  try {
-    const { readFileSync, existsSync } = await import('node:fs');
-    const { join, dirname } = await import('node:path');
-    let dir = process.cwd();
-    for (let depth = 0; depth < 10; depth++) {
-      const p = join(dir, '.browser-echo-mcp.json');
-      if (existsSync(p)) {
-        const raw = readFileSync(p, 'utf-8');
-        const data = JSON.parse(raw);
-        const base = (data?.url ? String(data.url) : '').replace(/\/$/, '').replace(/\/mcp$/i, '');
-        if (!/^(http:\/\/127\.0\.0\.1|http:\/\/localhost)/.test(base)) break;
-        const routeLogs = (data?.route ? String(data.route) as `/${string}` : '/__client-logs');
-        if (base && await __pingHealthNuxt(`${base}/health`, 300)) {
-          return { url: base, routeLogs };
-        }
-      }
-      const up = dirname(dir);
-      if (up === dir) break;
-      dir = up;
-    }
-  } catch {}
-  return { url: '' } as any;
-}
-
-async function __pingHealthNuxt(url: string, timeoutMs: number): Promise<boolean> {
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
-    const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' as any });
-    clearTimeout(t);
-    return res.ok;
-  } catch {
-    return false;
-  }
-}

@@ -7,12 +7,14 @@ export const GetLogsArgs = {
   includeStack: z.boolean().optional().default(false).describe('Include stack traces in text view'),
   limit: z.number().int().min(1).max(5000).optional().describe('Max number of entries to return'),
   contains: z.string().optional().describe('Substring filter on entry.text'),
-  sinceMs: z.number().nonnegative().optional().describe('Only entries with time >= sinceMs')
+  sinceMs: z.number().nonnegative().optional().describe('Only entries with time >= sinceMs'),
+  project: z.string().optional().describe('Project name to filter logs')
 } satisfies z.ZodRawShape;
 
 export const ClearLogsArgs = {
   session: z.string().optional().describe('8-char session id prefix to clear only one session'),
-  scope: z.enum(['soft','hard']).optional().default('hard').describe('soft: set baseline (non-destructive), hard: delete entries')
+  scope: z.enum(['soft','hard']).optional().default('hard').describe('soft: set baseline (non-destructive), hard: delete entries'),
+  project: z.string().optional().describe('Project name to clear only that project\'s logs')
 } satisfies z.ZodRawShape;
 
 // Full Zod objects for local inference/validation

@@ -1,7 +1,7 @@
 // Avoid exporting Vite types to prevent cross-version type mismatches in consumers
 import ansis from 'ansis';
 import type { BrowserLogLevel } from '@browser-echo/core';
-import { mkdirSync, appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { mkdirSync, appendFileSync } from 'node:fs';
 import { join as joinPath, dirname } from 'node:path';
 
 export interface BrowserLogsToTerminalOptions {
@@ -97,7 +97,7 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
   const logFilePath = joinPath(options.fileLog.dir, `dev-${sessionStamp}.log`);
   if (options.fileLog.enabled) { try { mkdirSync(dirname(logFilePath), { recursive: true }); } catch {} }
 
-  // Simplified MCP ingest resolution: project JSON once; no fallback; retry on failure
+  // Single-server resolution; retry on failure
   let resolvedBase = '';
   let resolvedIngest = '';
   let lastAnnouncement = '';
@@ -119,50 +119,14 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
     } catch { return false; }
   }
 
-  function readProjectJson(): { url: string; route?: `/${string}` } | null {
-    try {
-      let dir = process.cwd();
-      for (let depth = 0; depth < 10; depth++) {
-        const p = joinPath(dir, '.browser-echo-mcp.json');
-        if (existsSync(p)) {
-          const raw = readFileSync(p, 'utf-8');
-          let data: any;
-          try { data = JSON.parse(raw); }
-          catch (err: any) {
-            try { server.config.logger.warn(`${options.tag} failed to parse .browser-echo-mcp.json: ${err?.message || err}`); } catch {}
-            return null;
-          }
-          const url = (data?.url ? String(data.url) : '').replace(/\/$/, '');
-          const route = (data?.route ? String(data.route) : '/__client-logs') as `/${string}`;
-          if (url && /^(http:\/\/127\.0\.0\.1|http:\/\/localhost)/.test(url)) return { url, route };
-        }
-        const up = dirname(dir);
-        if (up === dir) break;
-        dir = up;
-      }
-    } catch {}
-    return null;
-  }
-
   async function resolveOnce() {
-    // Prefer explicit plugin option if provided
-    if (options.mcp.url) {
-      const base = String(options.mcp.url).replace(/\/$/, '').replace(/\/mcp$/i, '');
+    // Fixed default or explicit option/env
+    const base = String(options.mcp.url || process.env.BROWSER_ECHO_MCP_URL || 'http://127.0.0.1:5179').replace(/\/$/, '').replace(/\/mcp$/i, '');
+    if (await tryPingHealth(base, 250)) {
       resolvedBase = base;
       resolvedIngest = `${base}${options.mcp.routeLogs}`;
       announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
       return;
-    }
-
-    const cfg = readProjectJson();
-    if (cfg && cfg.url) {
-      const base = String(cfg.url).replace(/\/$/, '');
-      if (await tryPingHealth(base, 250)) {
-        resolvedBase = base;
-        resolvedIngest = `${base}${cfg.route || '/__client-logs'}`;
-        announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
-        return;
-      }
     }
     resolvedBase = '';
     resolvedIngest = '';
@@ -189,9 +153,13 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
       if (targetIngest) {
         try {
           // do not await
+          // Derive project name from env or package name
+          const projectName = (process.env.BROWSER_ECHO_PROJECT_NAME || (process.env.npm_package_name || '')).trim();
+          const extraHeaders: Record<string,string> = {};
+          if (projectName) extraHeaders['X-Browser-Echo-Project-Name'] = projectName;
           fetch(targetIngest, {
             method: 'POST',
-            headers: { 'content-type': 'application/json', ...options.mcp.headers },
+            headers: { 'content-type': 'application/json', ...extraHeaders, ...options.mcp.headers },
             body: JSON.stringify(payload),
             keepalive: true,
             cache: 'no-store'
@@ -303,8 +271,8 @@ if (!window[__INSTALLED_KEY]) {
     ORIGINAL[level] = orig;
     console[level] = (...args) => {
       const text = args.map((v)=>{try{if(typeof v==='string') return v; if(v instanceof Error) return (v.name||'Error')+': '+(v.message||''); const seen=new WeakSet(); return JSON.stringify(v,(k,val)=>{ if(typeof val==='bigint') return String(val)+'n'; if(typeof val==='function') return '[Function '+(val.name||'anonymous')+']'; if(val instanceof Error) return {name:val.name,message:val.message,stack:val.stack}; if(typeof val==='symbol') return val.toString(); if(val && typeof val==='object'){ if(seen.has(val)) return '[Circular]'; seen.add(val); } return val; }); } catch { try { return String(v) } catch { return '[Unserializable]' } }}).join(' ');
-      const stack = (new Error()).stack?.split('\\n').slice(1).filter(l=>!/virtual:browser-echo|enqueue|flush/.test(l)).join('\\n') || '';
-      const srcMatch = stack.match(/\\(?((?:file:\\/\\/|https?:\\/\\/|\\/)[^) \\n]+):(\\d+):(\\d+)\\)?/);
+      const stack = (new Error()).stack?.split('\n').slice(1).filter(l=>!/virtual:browser-echo|enqueue|flush/.test(l)).join('\n') || '';
+      const srcMatch = stack.match(/\(?((?:file:\/\/|https?:\/\/|\/)[^) \n]+):(\d+):(\d+)\)?/);
       const source = srcMatch ? (srcMatch[1]+':'+srcMatch[2]+':'+srcMatch[3]) : '';
       enqueue({ level, text, time: Date.now(), stack, source });
       if (PRESERVE) { try { orig(...args) } catch {} }
