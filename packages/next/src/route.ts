@@ -1,6 +1,28 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
+const MCP_BASE = (process.env.BROWSER_ECHO_MCP_URL || 'http://127.0.0.1:5179').replace(/\/$/, '').replace(/\/mcp$/i, '');
+let __probeStarted = false;
+async function __probeHealthOnce(): Promise<boolean> {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 400);
+    const res = await fetch(`${MCP_BASE}/health`, { signal: ctrl.signal as any, cache: 'no-store' as any });
+    clearTimeout(t);
+    return !!res && res.ok;
+  } catch { return false; }
+}
+function __startHealthProbe() {
+  if (__probeStarted) return;
+  __probeStarted = true;
+  setInterval(async () => {
+    if (__hasForwardedOnce) return;
+    const ok = await __probeHealthOnce();
+    if (ok) __hasForwardedOnce = true;
+  }, 1500);
+}
+__startHealthProbe();
+
 // Simplified: fixed single-server URL or env override
 
 export type BrowserLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
@@ -19,10 +41,8 @@ export async function POST(req: NextRequest) {
   catch { return new NextResponse('invalid JSON', { status: 400 }); }
   if (!payload || !Array.isArray(payload.entries)) return new NextResponse('invalid payload', { status: 400 });
 
-  // Fixed resolution (single-server): env or default localhost:5179 (strip optional /mcp suffix)
-  const baseUrl = (process.env.BROWSER_ECHO_MCP_URL || 'http://127.0.0.1:5179').replace(/\/$/, '').replace(/\/mcp$/i, '');
+  const baseUrl = MCP_BASE;
   const mcp = { url: baseUrl, routeLogs: '/__client-logs' } as const;
-  // No background probes; only flip after a successful POST
 
   // Forward to MCP server (fire-and-forget) and update connection state
   try {

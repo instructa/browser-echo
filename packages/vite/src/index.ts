@@ -120,7 +120,36 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
 
   computeBaseOnce();
 
-  // No background probes; start printing locally until a forward succeeds
+  // Start a small background probe to detect MCP coming online after Vite
+  startHealthProbe();
+
+  async function probeHealth(): Promise<boolean> {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 400);
+      const res = await fetch(`${resolvedBase}/health`, { signal: ctrl.signal as any, cache: 'no-store' as any });
+      clearTimeout(t);
+      return !!res && res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  function startHealthProbe() {
+    // Only starts once per dev server process
+    let started = false;
+    if (started) return;
+    started = true;
+    const interval = setInterval(async () => {
+      if (hasForwardedSuccessfully) return; // already forwarding
+      const ok = await probeHealth();
+      if (ok) {
+        hasForwardedSuccessfully = true;
+        announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
+      }
+    }, 1500);
+    // NOTE: we intentionally do not clear the interval; it's cheap and guarded above.
+  }
 
   server.middlewares.use(options.route, (req: import('http').IncomingMessage, res: import('http').ServerResponse, next: Function) => {
     if (req.method !== 'POST') return next();

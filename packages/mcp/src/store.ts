@@ -33,28 +33,59 @@ export class LogStore {
     this.entries.push(entry);
   }
 
-  clear(options?: { session?: string; scope?: 'soft' | 'hard' }) {
+  clear(options?: { session?: string; scope?: 'soft' | 'hard'; project?: string }) {
     const scope = options?.scope || 'hard';
     const session = options?.session;
+    const project = options?.project;
 
     if (scope === 'soft') {
-      const key = session || '__global__';
-      this.baselineTimestamps.set(key, Date.now());
-    } else {
-      if (session) {
-        this.entries = this.entries.filter(e => (e.sessionId || '').slice(0, 8) !== session);
-        this.baselineTimestamps.delete(session);
+      if (project && project.trim()) {
+        this.baselineTimestamps.set(`project:${project}`, Date.now());
+      } else if (session && session.trim()) {
+        this.baselineTimestamps.set(`session:${session.slice(0, 8)}`, Date.now());
       } else {
-        this.entries.length = 0;
-        this.baselineTimestamps.clear();
+        // Global soft baseline (discouraged for multi-project, kept for backward compat)
+        this.baselineTimestamps.set('__global__', Date.now());
       }
+      return;
     }
+
+    // Hard clear
+    if (project && project.trim()) {
+      // Remove only entries for this project and drop its baseline
+      const p = project;
+      this.entries = this.entries.filter(e => (e.project || '') !== p);
+      this.baselineTimestamps.delete(`project:${p}`);
+      return;
+    }
+
+    if (session && session.trim()) {
+      const s = session.slice(0, 8);
+      this.entries = this.entries.filter(e => (e.sessionId || '').slice(0, 8) !== s);
+      this.baselineTimestamps.delete(`session:${s}`);
+      return;
+    }
+
+    // Global hard clear
+    this.entries.length = 0;
+    this.baselineTimestamps.clear();
   }
 
   /** Set a baseline timestamp without deleting entries. If session omitted, use global baseline. */
   baseline(session?: string, when: number = Date.now()) {
-    const key = session || '__global__';
+    const key = session ? `session:${session.slice(0, 8)}` : '__global__';
     this.baselineTimestamps.set(key, when);
+  }
+
+  /** Set a baseline for a specific project (recommended for multi-project use). */
+  baselineProject(project: string, when: number = Date.now()) {
+    if (!project || !project.trim()) return;
+    this.baselineTimestamps.set(`project:${project}`, when);
+  }
+
+  /** Set a global baseline (discouraged for multi-project; kept for backward compatibility). */
+  baselineGlobal(when: number = Date.now()) {
+    this.baselineTimestamps.set('__global__', when);
   }
 
   toText(session?: string): string {
@@ -76,17 +107,23 @@ export class LogStore {
     let items = this.entries.slice();
     if (session) items = items.filter(e => (e.sessionId || '').slice(0, 8) === session);
 
-    const baselineKey = session || '__global__';
-    const baseline = this.baselineTimestamps.get(baselineKey);
-    if (baseline) {
-      items = items.filter(e => !e.time || e.time >= baseline);
-      if (items.length === 0 && this.entries.length > 0) {
-        // eslint-disable-next-line no-console
-        console.warn(`All ${this.entries.length} logs filtered out by baseline. Check timestamp format.`);
-      }
+    const globalTs = this.baselineTimestamps.get('__global__') || 0;
+    const sessionTs = session ? (this.baselineTimestamps.get(`session:${session}`) || 0) : 0;
+
+    const filtered = items.filter((e) => {
+      const t = e.time || 0;
+      const projectTs = e.project ? (this.baselineTimestamps.get(`project:${e.project}`) || 0) : 0;
+      // Session baseline only applies when caller filtered by that session.
+      const threshold = Math.max(globalTs, sessionTs, projectTs);
+      return t === 0 || t >= threshold;
+    });
+
+    if (filtered.length === 0 && this.entries.length > 0 && (globalTs || sessionTs)) {
+      // eslint-disable-next-line no-console
+      console.warn(`All ${this.entries.length} logs filtered out by baseline. Check timestamp format or baseline scope.`);
     }
 
-    return items;
+    return filtered;
   }
 }
 

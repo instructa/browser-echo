@@ -1,5 +1,27 @@
 import { defineEventHandler, readBody, setResponseStatus } from 'h3';
 
+const MCP_BASE = (process.env.BROWSER_ECHO_MCP_URL || 'http://127.0.0.1:5179').replace(/\/$/, '').replace(/\/mcp$/i, '');
+let __probeStarted = false;
+async function __probeHealthOnce(): Promise<boolean> {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 400);
+    const res = await fetch(`${MCP_BASE}/health`, { signal: ctrl.signal as any, cache: 'no-store' as any });
+    clearTimeout(t);
+    return !!res && res.ok;
+  } catch { return false; }
+}
+function __startHealthProbe() {
+  if (__probeStarted) return;
+  __probeStarted = true;
+  setInterval(async () => {
+    if (__hasForwardedOnce) return;
+    const ok = await __probeHealthOnce();
+    if (ok) __hasForwardedOnce = true;
+  }, 1500);
+}
+__startHealthProbe();
+
 // Simplified: fixed single-server URL or env override
 
 // Simplified: resolve MCP from project-local JSON once; no fallback
@@ -19,10 +41,8 @@ export default defineEventHandler(async (event) => {
     setResponseStatus(event, 400); return 'invalid payload';
   }
 
-  // Fixed single-server: env or default localhost:5179 (strip optional /mcp suffix)
-  const baseUrl = (process.env.BROWSER_ECHO_MCP_URL || 'http://127.0.0.1:5179').replace(/\/$/, '').replace(/\/mcp$/i, '');
+  const baseUrl = MCP_BASE;
   const mcp = { url: baseUrl, routeLogs: '/__client-logs' } as const;
-  // No background probe
 
   // Forward to MCP server (fire-and-forget) and update connection state
   try {

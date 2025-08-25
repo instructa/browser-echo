@@ -111,12 +111,17 @@ export function registerGetLogsTool(ctx: McpToolContext) {
         }).join('\n');
       }
 
-      // Auto-baseline unless stackedMode
+      // Auto-baseline unless stackedMode (prefer project/session scopes; avoid global)
       try {
         if (autoBaseline && !stackedMode) {
-          // baseline per project if selected; else by session or global
-          const baselineSession = validSession;
-          store.baseline(baselineSession);
+          if (project) {
+            store.baselineProject(project);
+          } else if (autoProject) {
+            store.baselineProject(autoProject);
+          } else if (validSession) {
+            store.baseline(validSession);
+          }
+          // No global baseline by default to avoid cross-project interference
         }
       } catch {}
 
