@@ -20,14 +20,13 @@ export function registerGetLogsTool(ctx: McpToolContext) {
         contains,
         sinceMs,
         project,
-        autoBaseline = true,
-        stackedMode = false
+        // Removed: autoBaseline and stackedMode
       } = safeArgs as typeof GetLogsSchema['_output'];
 
       const validSession = validateSessionId(session);
       const validSince = typeof sinceMs === 'number' && sinceMs >= 0 ? sinceMs : undefined;
 
-      // Standardize: let store handle session filtering
+      // Get logs with optional session filter
       let items = store.snapshot(validSession);
       if (validSince) items = items.filter(e => !e.time || e.time >= validSince);
       if (level?.length) items = items.filter(e => level.includes(e.level));
@@ -53,6 +52,9 @@ export function registerGetLogsTool(ctx: McpToolContext) {
             .filter(([, t]) => t > 0 && (now - t) <= recentWindowMs)
             .map(([p]) => p);
           if (active.length === 1) autoProject = active[0];
+        } else if (projectsAll.size === 1) {
+          // If only one project exists, auto-select it
+          autoProject = Array.from(projectsAll)[0];
         }
       }
 
@@ -62,6 +64,22 @@ export function registerGetLogsTool(ctx: McpToolContext) {
       // Multi-project awareness: if no explicit project and multiple projects exist, show grouped preview
       const uniqueProjects = new Set(limited.map(e => e.project || '')); uniqueProjects.delete('');
       let text: string;
+      
+      // If no logs found, provide helpful message
+      if (limited.length === 0) {
+        const allProjects = new Set(store.snapshot().map(e => e.project || '').filter(p => p));
+        if (allProjects.size > 0) {
+          text = `No logs found matching your criteria. Available projects: ${Array.from(allProjects).join(', ')}\n\nTry: get_logs with { project: "<project-name>" }`;
+        } else {
+          text = 'No logs available yet.';
+        }
+        return {
+          content: [
+            { type: 'text' as const, text }
+          ]
+        };
+      }
+      
       if (!project && !autoProject && uniqueProjects.size > 1) {
         const groups = Array.from(uniqueProjects.values());
         const byProject: Record<string, typeof limited> = {};
@@ -111,23 +129,30 @@ export function registerGetLogsTool(ctx: McpToolContext) {
         }).join('\n');
       }
 
-      // Auto-baseline unless stackedMode (prefer project/session scopes; avoid global)
-      try {
-        if (autoBaseline && !stackedMode) {
-          if (project) {
-            store.baselineProject(project);
-          } else if (autoProject) {
-            store.baselineProject(autoProject);
-          } else if (validSession) {
-            store.baseline(validSession);
-          }
-          // No global baseline by default to avoid cross-project interference
+      // Add timestamp info to help users understand log freshness
+      const now = Date.now();
+      const oldestTime = limited.find(e => e.time)?.time || 0;
+      const newestTime = limited.findLast(e => e.time)?.time || 0;
+      
+      let timestampInfo = '';
+      if (oldestTime && newestTime) {
+        const ageMs = now - oldestTime;
+        const ageSec = Math.floor(ageMs / 1000);
+        const ageMin = Math.floor(ageSec / 60);
+        
+        const rangeMs = newestTime - oldestTime;
+        const rangeSec = Math.floor(rangeMs / 1000);
+        
+        if (ageMin > 0) {
+          timestampInfo = `\n\n[Log range: ${rangeSec}s, oldest: ${ageMin}m ago]`;
+        } else {
+          timestampInfo = `\n\n[Log range: ${rangeSec}s, oldest: ${ageSec}s ago]`;
         }
-      } catch {}
+      }
 
       return {
         content: [
-          { type: 'text' as const, text }
+          { type: 'text' as const, text: text + timestampInfo }
         ]
       };
     }

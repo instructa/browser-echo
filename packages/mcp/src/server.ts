@@ -354,20 +354,20 @@ export async function startIngestOnlyServer(
     actualPort = await listenWithResult(nodeServer, opts.host, opts.port);
   } catch (err: any) {
     const isAddrInUse = err && (err.code === 'EADDRINUSE' || String(err.message || '').includes('EADDRINUSE'));
-    if (isAddrInUse) {
-      const base = `http://${opts.host}:${opts.port}`;
-      // If an ingest server already responds to /health, reuse it silently
-      try {
-        const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), 400);
-        const res = await fetch(`${base}/health`, { signal: ctrl.signal as any, cache: 'no-store' as any });
-        clearTimeout(t);
-        if (res && res.ok) {
-          // eslint-disable-next-line no-console
-          console.error(`Ingest server already running at ${base}${opts.logsRoute}. Reusing existing instance.`);
-          return; // Treat as success
-        }
-      } catch {}
+          if (isAddrInUse) {
+        const base = `http://${opts.host}:${opts.port}`;
+        // If an ingest server already responds to /health, reuse it silently
+        try {
+          const ctrl = new AbortController();
+          const t = setTimeout(() => ctrl.abort(), 400);
+          const res = await fetch(`${base}/health`, { signal: ctrl.signal as any, cache: 'no-store' as any });
+          clearTimeout(t);
+          if (res && res.ok) {
+            // eslint-disable-next-line no-console
+            console.error(`Ingest server already running at ${base}${opts.logsRoute}. Reusing existing instance.`);
+            return; // Treat as success
+          }
+        } catch {}
       // eslint-disable-next-line no-console
       console.error(`Failed to start ingest-only server: Port in use at ${base}${opts.logsRoute}`);
     }

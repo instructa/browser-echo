@@ -11,13 +11,12 @@ export function registerClearLogsTool(ctx: McpToolContext) {
     ClearLogsSchema,
     async (args, _extra) => {
       const safeArgs = args || {} as any;
-      const { session, scope = 'hard', project } = safeArgs as typeof ClearLogsSchema['_output'];
+      const { session, project } = safeArgs as typeof ClearLogsSchema['_output'];
       const validSession = validateSessionId(session);
 
-      store.clear({ session: validSession, scope, project });
+      store.clear({ session: validSession, scope: 'hard', project });
 
-      let message = 'Browser log buffer ';
-      message += scope === 'soft' ? 'baseline set' : 'cleared';
+      let message = 'Browser log buffer cleared';
       if (project) message += ` for project ${project}`;
       else if (validSession) message += ` for session ${validSession}`;
       message += '.';
