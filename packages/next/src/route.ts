@@ -10,35 +10,40 @@ type Payload = { sessionId?: string; entries: Entry[] };
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+// Module-scope: suppress only after first confirmed forward (any 2xx)
+let __hasForwardedOnce = false;
+
 export async function POST(req: NextRequest) {
   let payload: Payload | null = null;
   try { payload = (await req.json()) as Payload; }
   catch { return new NextResponse('invalid JSON', { status: 400 }); }
   if (!payload || !Array.isArray(payload.entries)) return new NextResponse('invalid payload', { status: 400 });
 
-  // Fixed resolution (single-server): env or default localhost:5179
-  const mcp = { url: (process.env.BROWSER_ECHO_MCP_URL || 'http://127.0.0.1:5179').replace(/\/$/, ''), routeLogs: '/__client-logs' } as const;
+  // Fixed resolution (single-server): env or default localhost:5179 (strip optional /mcp suffix)
+  const baseUrl = (process.env.BROWSER_ECHO_MCP_URL || 'http://127.0.0.1:5179').replace(/\/$/, '').replace(/\/mcp$/i, '');
+  const mcp = { url: baseUrl, routeLogs: '/__client-logs' } as const;
+  // No background probes; only flip after a successful POST
 
-  // Forward to MCP server if available (fire-and-forget)
-  if (mcp.url) {
-    try {
-      const route = (mcp.routeLogs as `/${string}`) || '/__client-logs';
-      const headers: Record<string,string> = { 'content-type': 'application/json' };
-      // Derive project name from env or package name
-      const projectName = (process.env.BROWSER_ECHO_PROJECT_NAME || (process.env.npm_package_name || '')).trim();
-      if (projectName) headers['X-Browser-Echo-Project-Name'] = projectName;
-      fetch(`${mcp.url}${route}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-        keepalive: true,
-        cache: 'no-store',
-      }).catch(() => void 0);
-    } catch {}
-  }
+  // Forward to MCP server (fire-and-forget) and update connection state
+  try {
+    const route = (mcp.routeLogs as `/${string}`) || '/__client-logs';
+    const headers: Record<string,string> = { 'content-type': 'application/json' };
+    const projectName = (process.env.BROWSER_ECHO_PROJECT_NAME || (process.env.npm_package_name || '')).trim();
+    if (projectName) headers['X-Browser-Echo-Project-Name'] = projectName;
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 500);
+    fetch(`${mcp.url}${route}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      keepalive: true,
+      cache: 'no-store',
+      signal: ctrl.signal as any,
+    }).then((res) => { try { clearTimeout(timeout); } catch {} if (res && res.ok) __hasForwardedOnce = true; }).catch(() => { try { clearTimeout(timeout); } catch {} });
+  } catch {}
 
-  // Dynamically decide whether to print to terminal
-  const shouldPrint = !mcp.url;
+  // Print locally until first confirmed forward; then suppress
+  const shouldPrint = !__hasForwardedOnce;
 
   const sid = (payload.sessionId ?? 'anon').slice(0, 8);
   for (const entry of payload.entries) {

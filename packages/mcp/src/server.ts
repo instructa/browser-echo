@@ -1,6 +1,4 @@
 import { createServer as createNodeServer } from 'node:http';
-import { writeFileSync, rmSync, renameSync } from 'node:fs';
-import { join as joinPath } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import { createApp, createRouter, defineEventHandler, getQuery, readRawBody, setResponseStatus, toNodeListener } from 'h3';
@@ -101,6 +99,31 @@ export async function startHttpServer(
   store: LogStore,
   opts: { host: string; port: number; endpoint: `/${string}`; logsRoute: `/${string}` }
 ): Promise<void> {
+  async function tryFetch(url: string, init: any = {}, timeoutMs = 400): Promise<{ ok: boolean; status: number; text?: string }> {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), timeoutMs);
+      const res = await fetch(url, { ...(init || {}), signal: ctrl.signal as any, cache: 'no-store' as any });
+      clearTimeout(t);
+      let body: string | undefined;
+      try { body = await res.text(); } catch {}
+      return { ok: !!res.ok, status: res.status, text: body };
+    } catch {
+      return { ok: false, status: 0 } as any;
+    }
+  }
+
+  async function isExistingHttpMcp(base: string, endpoint: `/${string}`): Promise<boolean> {
+    const health = await tryFetch(`${base}/health`);
+    if (!health.ok) return false;
+    // Probe MCP endpoint: GET without session should respond 405 with JSON error
+    const probe = await tryFetch(`${base}${endpoint}`, { method: 'GET' });
+    if (probe.status === 405 && (probe.text || '').includes('Method not allowed')) return true;
+    // Some servers may not expose GET; try OPTIONS as a weak signal
+    const opt = await tryFetch(`${base}${endpoint}`, { method: 'OPTIONS' });
+    return opt.status === 204 || opt.status === 200;
+  }
+
   const app = createApp();
   const router = createRouter();
 
@@ -231,11 +254,16 @@ export async function startHttpServer(
   } catch (err: any) {
     const isAddrInUse = err && (err.code === 'EADDRINUSE' || String(err.message || '').includes('EADDRINUSE'));
     if (isAddrInUse) {
+      const base = `http://${opts.host}:${opts.port}`;
+      const reuse = await isExistingHttpMcp(base, opts.endpoint);
+      if (reuse) {
+        // eslint-disable-next-line no-console
+        console.error(`Existing MCP server detected at ${base}. Reusing it without starting a new instance.`);
+        return; // Treat as successful startup (server already available)
+      }
       const errorMsg = [
-        `Failed to start MCP server: Port ${opts.port} is already in use.`,
-        `Another instance may be running. Please either:`,
-        `  - Stop the other instance, or`,
-        `  - Use a different port with --port flag`
+        `Failed to start MCP server: Port ${opts.port} is already in use by a non-MCP service.`,
+        `Either stop that service or choose a different port with --port.`,
       ].join('\n');
       console.error(errorMsg);
       process.exit(1);
@@ -328,6 +356,18 @@ export async function startIngestOnlyServer(
     const isAddrInUse = err && (err.code === 'EADDRINUSE' || String(err.message || '').includes('EADDRINUSE'));
     if (isAddrInUse) {
       const base = `http://${opts.host}:${opts.port}`;
+      // If an ingest server already responds to /health, reuse it silently
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 400);
+        const res = await fetch(`${base}/health`, { signal: ctrl.signal as any, cache: 'no-store' as any });
+        clearTimeout(t);
+        if (res && res.ok) {
+          // eslint-disable-next-line no-console
+          console.error(`Ingest server already running at ${base}${opts.logsRoute}. Reusing existing instance.`);
+          return; // Treat as success
+        }
+      } catch {}
       // eslint-disable-next-line no-console
       console.error(`Failed to start ingest-only server: Port in use at ${base}${opts.logsRoute}`);
     }

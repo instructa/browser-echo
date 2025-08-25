@@ -19,7 +19,9 @@ export function registerGetLogsTool(ctx: McpToolContext) {
         limit = 1000,
         contains,
         sinceMs,
-        project
+        project,
+        autoBaseline = true,
+        stackedMode = false
       } = safeArgs as typeof GetLogsSchema['_output'];
 
       const validSession = validateSessionId(session);
@@ -108,6 +110,15 @@ export function registerGetLogsTool(ctx: McpToolContext) {
           return line;
         }).join('\n');
       }
+
+      // Auto-baseline unless stackedMode
+      try {
+        if (autoBaseline && !stackedMode) {
+          // baseline per project if selected; else by session or global
+          const baselineSession = validSession;
+          store.baseline(baselineSession);
+        }
+      } catch {}
 
       return {
         content: [

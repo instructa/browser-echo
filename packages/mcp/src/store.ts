@@ -51,6 +51,12 @@ export class LogStore {
     }
   }
 
+  /** Set a baseline timestamp without deleting entries. If session omitted, use global baseline. */
+  baseline(session?: string, when: number = Date.now()) {
+    const key = session || '__global__';
+    this.baselineTimestamps.set(key, when);
+  }
+
   toText(session?: string): string {
     return this.snapshot(session).map((e) => {
       const sid = (e.sessionId || 'anon').slice(0, 8);

@@ -288,160 +288,63 @@ Best for local development with AI assistants:
 }
 ```
 
-In stdio mode:
-- MCP communication happens over **stdio** (no HTTP MCP endpoint)
-- An **HTTP ingest server** runs on a local port (127.0.0.1) for browsers to POST logs
-- The actual URL is written to `.browser-echo-mcp.json` in your project root
-- Console output (stderr): `MCP (stdio) listening on stdio (ingest HTTP active)`
-
-### HTTP Mode
-
-For web-based AI tools or when you need HTTP MCP access:
-
-```json
-// .cursor/mcp.json  
-{
-  "mcpServers": {
-    "browser-echo": {
-      "command": "node", 
-      "args": ["packages/mcp/bin/cli.mjs", "--http"]
-    }
-  }
-}
-```
-
-In HTTP mode:
-- Full **Streamable HTTP** MCP endpoint and HTTP ingest endpoint run on the specified host/port
-- Console output: `MCP (Streamable HTTP) listening → http://127.0.0.1:<port>/mcp`
-
-### Custom Configuration
-
-```bash
-# Custom ingest port in stdio mode (override ephemeral)
-BROWSER_ECHO_INGEST_PORT=8081 node packages/mcp/bin/cli.mjs
-
-# Custom HTTP server  
-node packages/mcp/bin/cli.mjs --http --host 0.0.0.0 --port 5179
-```
+- Vite/Next/Nuxt send `X-Browser-Echo-Project-Name` so logs are project-tagged.
+- No `.browser-echo-mcp.json` discovery files are used anymore.
 
 ---
 
-## How Logs Reach the Server
+## Available Tools
 
-### Browser → Ingest (Recommended)
+### `get_logs` — Fetch Frontend Browser Logs
 
-Your framework packages automatically send logs to the ingest endpoint:
+Key params (selection):
+- `project?: string` — filter by project name
+- `level?: string[]`, `sinceMs?: number`, `contains?: string`
+- `session?: string`, `includeStack?: boolean`, `limit?: number`
+- `autoBaseline?: boolean` (default true)
+- `stackedMode?: boolean` (default false) — disables auto-baseline
 
-```typescript
-// Browser automatically POSTs to ingest endpoint
-POST http://127.0.0.1:5179/__client-logs
-{
-  "sessionId": "tab-123",
-  "entries": [
-    { 
-      "level": "error", 
-      "text": "Failed to fetch user", 
-      "time": 1724200000000, 
-      "source": "api.ts:42", 
-      "stack": "Error: ..." 
-    }
-  ]
-}
-```
+Adaptive output:
+- If multiple projects are active and no `project` specified, returns grouped previews per project with counts and a tip to filter.
 
-### Framework Forwarding
+### `clear_logs` — Clear Frontend Browser Logs
 
-Framework packages (Next.js, Nuxt, etc.) can forward logs to the MCP server:
-
-```bash
-# Set this in your app's environment
-export BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp
-```
-
-When set, framework handlers automatically forward browser logs to the MCP ingest endpoint.
+- Supports `project?: string` to clear only that project’s logs.
+- `scope: 'soft' | 'hard'` for baselining vs deletion.
 
 ---
 
 ## Programmatic API
 
-Start the MCP server programmatically in your Node.js application:
-
-```typescript
+```ts
 import { startMcpServer, publishLogEntry } from '@browser-echo/mcp';
 
-// Start HTTP MCP server in-process
-await startMcpServer({
-  name: 'My App Logs',
-  version: '1.0.0',
-  bufferSize: 2000,
-  host: '127.0.0.1',
-  port: 5179,
-  endpoint: '/mcp',
-  logsRoute: '/__client-logs'
-});
+await startMcpServer({ host: '127.0.0.1', port: 5179, endpoint: '/mcp', logsRoute: '/__client-logs' });
 
-// Publish log entries programmatically
 publishLogEntry({
   sessionId: 'user-123',
   level: 'error',
   text: 'Failed to fetch user data',
   time: Date.now(),
-  source: 'api.ts:42',
-  stack: 'Error: Failed to fetch...',
-  tag: '[api]'
+  tag: '[api]',
+  project: 'my-app'
 });
 ```
-
-> **Note:** If `BROWSER_ECHO_MCP_URL` is set, `startMcpServer()` becomes a no-op to avoid duplicate servers.
 
 ---
 
 ## Environment Variables
 
-Configure the MCP server behavior with these environment variables:
-
-- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — MCP server URL for framework forwarding (if set, frameworks bypass auto-discovery)
-- `BROWSER_ECHO_BUFFER_SIZE=1000` — Max entries kept in memory (default: `1000`)
-- `BROWSER_ECHO_INGEST_PORT=5179` — Force a fixed ingest port in stdio mode (default: 5179)
-- `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Force suppress terminal output when MCP is forwarding logs
-- `BROWSER_ECHO_SUPPRESS_TERMINAL=0` — Force show terminal output even when MCP is active
-
----
-
-## Common Workflows
-
-### Debug Hydration Errors
-```
-1. User: "Clear logs and let me reproduce the hydration error"
-   → clear_logs({ scope: 'soft' })
-2. User reproduces the issue in browser
-3. User: "Check for hydration errors"  
-   → get_logs({ level: ['error', 'warn'], contains: 'hydration' })
-```
-
-### Monitor Specific Browser Tab
-```
-1. User: "Show me all active sessions"
-   → get_logs() // Look for unique session IDs
-2. User: "Focus on session starting with 'a1b2'"
-   → get_logs({ session: 'a1b2' })
-```
-
-### Fresh Error Capture
-```
-1. clear_logs({ scope: 'soft' })  // Set baseline
-2. Run tests or reproduce issue
-3. get_logs({ level: ['error', 'warn'] })  // Only new errors
-```
+- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Frameworks forward logs here
+- `BROWSER_ECHO_PROJECT_NAME` — Label logs by project
+- `BROWSER_ECHO_BUFFER_SIZE=1000` — Ring buffer size
 
 ---
 
 ## Security
 
-**Local Development Defaults:**
-- CORS headers are permissive (`Access-Control-Allow-Origin: *`) 
-- Binds to `127.0.0.1` by default for local-only access
-- When exposing over network, add authentication/proxy as needed
+- Binds to `127.0.0.1` by default
+- CORS permissive for local dev; add auth/proxy if exposing
 
 ---
 

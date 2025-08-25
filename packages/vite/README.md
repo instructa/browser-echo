@@ -227,9 +227,9 @@ This package depends on [@browser-echo/core](https://github.com/instructa/browse
 ## License
 
 MIT
-
 ## Links
 
 - [Main Repository](https://github.com/instructa/browser-echo)
 - [Documentation](https://github.com/instructa/browser-echo#readme)
 - [Core Package](https://github.com/instructa/browser-echo/tree/main/packages/core)
+

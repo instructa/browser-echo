@@ -169,7 +169,7 @@ For React (non-Vite) apps, MCP forwarding depends on your server-side route impl
 
 ### Environment Variables
 
-- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Set in your server environment
+- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179` — Set in your server environment
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Control terminal output in your route handler
 
 ### Server Route MCP Integration
@@ -184,7 +184,7 @@ app.post('/__client-logs', async (req, res) => {
   // Forward to MCP if configured
   const mcpUrl = process.env.BROWSER_ECHO_MCP_URL;
   if (mcpUrl) {
-    const ingestUrl = mcpUrl.replace('/mcp', '/__client-logs');
+    const ingestUrl = `${mcpUrl}/__client-logs`;
     try {
       await fetch(ingestUrl, {
         method: 'POST',

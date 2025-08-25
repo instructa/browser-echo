@@ -93,7 +93,7 @@ For core usage, MCP forwarding depends on your server-side route implementation.
 
 ### Environment Variables
 
-- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Set in your server environment
+- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179` — Set in your server environment
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Control terminal output in your route handler
 
 ### Server Route MCP Integration

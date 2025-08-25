@@ -97,9 +97,10 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
   const logFilePath = joinPath(options.fileLog.dir, `dev-${sessionStamp}.log`);
   if (options.fileLog.enabled) { try { mkdirSync(dirname(logFilePath), { recursive: true }); } catch {} }
 
-  // Single-server resolution; retry on failure
+  // Single global server model: compute base; manage connection state
   let resolvedBase = '';
   let resolvedIngest = '';
+  let hasForwardedSuccessfully = false; // suppress only after first confirmed 2xx
   let lastAnnouncement = '';
 
   const announce = (msg: string) => {
@@ -109,31 +110,17 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
     }
   };
 
-  async function tryPingHealth(base: string, timeoutMs = 400): Promise<boolean> {
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), timeoutMs);
-      const res = await fetch(`${base}/health`, { signal: ctrl.signal as any, cache: 'no-store' as any });
-      clearTimeout(t);
-      return !!res?.ok;
-    } catch { return false; }
+  function computeBaseOnce() {
+    const base = String(options.mcp.url || process.env.BROWSER_ECHO_MCP_URL || 'http://127.0.0.1:5179')
+      .replace(/\/$/, '')
+      .replace(/\/mcp$/i, '');
+    resolvedBase = base;
+    resolvedIngest = `${base}${options.mcp.routeLogs}`;
   }
 
-  async function resolveOnce() {
-    // Fixed default or explicit option/env
-    const base = String(options.mcp.url || process.env.BROWSER_ECHO_MCP_URL || 'http://127.0.0.1:5179').replace(/\/$/, '').replace(/\/mcp$/i, '');
-    if (await tryPingHealth(base, 250)) {
-      resolvedBase = base;
-      resolvedIngest = `${base}${options.mcp.routeLogs}`;
-      announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
-      return;
-    }
-    resolvedBase = '';
-    resolvedIngest = '';
-  }
+  computeBaseOnce();
 
-  // Resolve once at startup
-  resolveOnce();
+  // No background probes; start printing locally until a forward succeeds
 
   server.middlewares.use(options.route, (req: import('http').IncomingMessage, res: import('http').ServerResponse, next: Function) => {
     if (req.method !== 'POST') return next();
@@ -144,32 +131,34 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
 
       if (!payload || !Array.isArray(payload.entries)) { res.statusCode = 400; res.end('invalid payload'); return; }
 
-      // Mirror to MCP server if configured
-      let targetIngest = resolvedIngest || '';
-      if (!targetIngest) {
-        try { await resolveOnce(); } catch {}
-        targetIngest = resolvedIngest || '';
-      }
-      if (targetIngest) {
-        try {
-          // do not await
-          // Derive project name from env or package name
-          const projectName = (process.env.BROWSER_ECHO_PROJECT_NAME || (process.env.npm_package_name || '')).trim();
-          const extraHeaders: Record<string,string> = {};
-          if (projectName) extraHeaders['X-Browser-Echo-Project-Name'] = projectName;
-          fetch(targetIngest, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json', ...extraHeaders, ...options.mcp.headers },
-            body: JSON.stringify(payload),
-            keepalive: true,
-            cache: 'no-store'
-          }).catch(() => { try { resolveOnce(); } catch {} });
-        } catch {}
-      }
+      // Mirror to MCP server (fire-and-forget) and update connection state
+      const targetIngest = resolvedIngest;
+      try {
+        const projectName = (process.env.BROWSER_ECHO_PROJECT_NAME || (process.env.npm_package_name || '')).trim();
+        const extraHeaders: Record<string,string> = {};
+        if (projectName) extraHeaders['X-Browser-Echo-Project-Name'] = projectName;
+        const ctrl = new AbortController();
+        const timeout = setTimeout(() => ctrl.abort(), 500);
+        fetch(targetIngest, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', ...extraHeaders, ...options.mcp.headers },
+          body: JSON.stringify(payload),
+          keepalive: true,
+          cache: 'no-store',
+          signal: ctrl.signal as any
+        }).then((res) => {
+          clearTimeout(timeout);
+          const ok = !!res && res.ok;
+          if (ok && !hasForwardedSuccessfully) {
+            hasForwardedSuccessfully = true;
+            announce(`${options.tag} forwarding logs to MCP ingest at ${targetIngest}`);
+          }
+        }).catch(() => { try { clearTimeout(timeout); } catch {} });
+      } catch {}
 
       const logger = server.config.logger;
-      const suppressTerminal = options.mcp.suppressProvided ? (options.mcp.suppressTerminal && !!targetIngest) : !!targetIngest;
-      const shouldPrint = !suppressTerminal;
+      // Only suppress after first successful forward; never re-enable
+      const shouldPrint = !hasForwardedSuccessfully;
       const sid = (payload.sessionId ?? 'anon').slice(0, 8);
       for (const entry of payload.entries) {
         const level = normalizeLevel(entry.level);
@@ -271,10 +260,8 @@ if (!window[__INSTALLED_KEY]) {
     ORIGINAL[level] = orig;
     console[level] = (...args) => {
       const text = args.map((v)=>{try{if(typeof v==='string') return v; if(v instanceof Error) return (v.name||'Error')+': '+(v.message||''); const seen=new WeakSet(); return JSON.stringify(v,(k,val)=>{ if(typeof val==='bigint') return String(val)+'n'; if(typeof val==='function') return '[Function '+(val.name||'anonymous')+']'; if(val instanceof Error) return {name:val.name,message:val.message,stack:val.stack}; if(typeof val==='symbol') return val.toString(); if(val && typeof val==='object'){ if(seen.has(val)) return '[Circular]'; seen.add(val); } return val; }); } catch { try { return String(v) } catch { return '[Unserializable]' } }}).join(' ');
-      const stack = (new Error()).stack?.split('\n').slice(1).filter(l=>!/virtual:browser-echo|enqueue|flush/.test(l)).join('\n') || '';
-      const srcMatch = stack.match(/\(?((?:file:\/\/|https?:\/\/|\/)[^) \n]+):(\d+):(\d+)\)?/);
-      const source = srcMatch ? (srcMatch[1]+':'+srcMatch[2]+':'+srcMatch[3]) : '';
-      enqueue({ level, text, time: Date.now(), stack, source });
+      const stack = (new Error()).stack || '';
+      enqueue({ level, text, time: Date.now(), stack });
       if (PRESERVE) { try { orig(...args) } catch {} }
     };
   }
