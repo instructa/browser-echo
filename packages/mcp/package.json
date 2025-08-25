@@ -27,7 +27,7 @@
   "dependencies": {
     "citty": "^0.1.6",
     "h3": "^1.13.0",
-    "zod": "^4.0.17",
+    "zod": "^3.23.8",
     "@modelcontextprotocol/sdk": "^1.17.2"
   },
   "devDependencies": {
