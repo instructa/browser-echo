@@ -1,7 +1,7 @@
 // Avoid exporting Vite types to prevent cross-version type mismatches in consumers
 import ansis from 'ansis';
 import type { BrowserLogLevel, NetworkCaptureOptions } from '@browser-echo/core';
-import { mkdirSync, appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { mkdirSync, appendFileSync } from 'node:fs';
 import { join as joinPath, dirname } from 'node:path';
 
 export interface BrowserLogsToTerminalOptions {
@@ -123,25 +123,7 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
       return;
     }
 
-    // 2) Project-local discovery file in CWD (do not default to port 5179)
-    try {
-      const discPath = joinPath(process.cwd(), '.browser-echo-mcp.json');
-      if (existsSync(discPath)) {
-        try {
-          const txt = readFileSync(discPath, 'utf-8');
-          const obj = JSON.parse(txt || '{}') as { url?: string; route?: string };
-          if (obj && obj.url) {
-            const base = String(obj.url).trim().replace(/\/$/, '').replace(/\/mcp$/i, '');
-            const route = (obj as any).route || options.mcp.routeLogs || '/__client-logs';
-            resolvedBase = base;
-            resolvedIngest = `${base}${route as `/${string}`}`;
-            return;
-          }
-        } catch {}
-      }
-    } catch {}
-
-    // 3) No configured or discovered MCP → keep base empty; do not probe, always print locally
+    // No configured MCP → keep base empty; do not suppress; optional safe auto-detect happens in probe loop
     resolvedBase = '';
     resolvedIngest = '';
   }
@@ -167,12 +149,55 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
     }
   }
 
+  async function probeIsMcp(base: string): Promise<boolean> {
+    try {
+      // Expect GET to return 405 Method Not Allowed for MCP endpoint
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 400);
+      const res = await fetch(`${base}/mcp`, { method: 'GET', signal: ctrl.signal as any, cache: 'no-store' as any });
+      clearTimeout(t);
+      if (res && res.status === 405) return true;
+      // Fallback OPTIONS 200/204
+      const ctrl2 = new AbortController();
+      const t2 = setTimeout(() => ctrl2.abort(), 400);
+      const res2 = await fetch(`${base}/mcp`, { method: 'OPTIONS', signal: ctrl2.signal as any, cache: 'no-store' as any });
+      clearTimeout(t2);
+      return !!res2 && (res2.status === 200 || res2.status === 204);
+    } catch {
+      return false;
+    }
+  }
+
   function startHealthProbe() {
     // Only starts once per dev server process
     let started = false;
     if (started) return;
     started = true;
     const interval = setInterval(async () => {
+      // If no explicit config and nothing resolved yet, try safe auto-detect in dev (skip during tests)
+      const hasExplicitConfig = !!(options.mcp.url || process.env.BROWSER_ECHO_MCP_URL);
+      if (!hasExplicitConfig && !resolvedBase && process.env.NODE_ENV !== 'test') {
+        const candidate = 'http://127.0.0.1:5179';
+        // First check health
+        let healthy = false;
+        try {
+          const ctrl = new AbortController();
+          const t = setTimeout(() => ctrl.abort(), 400);
+          const res = await fetch(`${candidate}/health`, { signal: ctrl.signal as any, cache: 'no-store' as any });
+          clearTimeout(t);
+          healthy = !!res && res.ok;
+        } catch {}
+        if (healthy) {
+          const isMcp = await probeIsMcp(candidate);
+          if (isMcp) {
+            resolvedBase = candidate;
+            resolvedIngest = `${candidate}${options.mcp.routeLogs}`;
+            isRemoteAvailable = true; // but we will not suppress unless explicit config is present
+            announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
+          }
+        }
+      }
+
       if (!resolvedBase) return; // nothing to probe without a known/current MCP
       const ok = await probeHealth();
       if (ok && !isRemoteAvailable) {
@@ -233,8 +258,10 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
       } catch {}
 
       const logger = server.config.logger;
-      // Suppress when user requests it AND a current MCP endpoint is configured AND is considered available
-      const shouldPrint = !options.mcp.suppressTerminal || !resolvedBase || !isRemoteAvailable;
+      const hasExplicitConfig = !!(options.mcp.url || process.env.BROWSER_ECHO_MCP_URL);
+      // Suppress only when explicitly configured AND MCP considered available
+      const shouldSuppress = hasExplicitConfig && options.mcp.suppressTerminal && isRemoteAvailable;
+      const shouldPrint = !shouldSuppress;
       const sid = (payload.sessionId ?? 'anon').slice(0, 8);
       for (const entry of payload.entries) {
         const level = normalizeLevel(entry.level);
