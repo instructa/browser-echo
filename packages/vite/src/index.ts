@@ -149,23 +149,24 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
     }
   }
 
-  async function probeIsMcp(base: string): Promise<boolean> {
+  async function probeIngestCandidate(base: string, ingestRoute: `/${string}`): Promise<boolean> {
+    // Validate ingest-only servers by probing the ingest route directly
+    const url = `${base}${ingestRoute}`;
     try {
-      // Expect GET to return 405 Method Not Allowed for MCP endpoint
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 400);
-      const res = await fetch(`${base}/mcp`, { method: 'GET', signal: ctrl.signal as any, cache: 'no-store' as any });
+      const res = await fetch(url, { method: 'GET', signal: ctrl.signal as any, cache: 'no-store' as any });
       clearTimeout(t);
-      if (res && res.status === 405) return true;
-      // Fallback OPTIONS 200/204
-      const ctrl2 = new AbortController();
-      const t2 = setTimeout(() => ctrl2.abort(), 400);
-      const res2 = await fetch(`${base}/mcp`, { method: 'OPTIONS', signal: ctrl2.signal as any, cache: 'no-store' as any });
-      clearTimeout(t2);
-      return !!res2 && (res2.status === 200 || res2.status === 204);
-    } catch {
-      return false;
-    }
+      if (res && (res.status === 200 || res.status === 204)) return true;
+    } catch {}
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 400);
+      const res = await fetch(url, { method: 'OPTIONS', signal: ctrl.signal as any, cache: 'no-store' as any });
+      clearTimeout(t);
+      if (res && (res.status === 200 || res.status === 204)) return true;
+    } catch {}
+    return false;
   }
 
   function startHealthProbe() {
@@ -188,8 +189,8 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
           healthy = !!res && res.ok;
         } catch {}
         if (healthy) {
-          const isMcp = await probeIsMcp(candidate);
-          if (isMcp) {
+          const okIngest = await probeIngestCandidate(candidate, options.mcp.routeLogs);
+          if (okIngest) {
             resolvedBase = candidate;
             resolvedIngest = `${candidate}${options.mcp.routeLogs}`;
             isRemoteAvailable = true; // but we will not suppress unless explicit config is present
