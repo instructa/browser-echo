@@ -26,7 +26,37 @@ export function registerGetLogsTool(ctx: McpToolContext) {
       const validSession = validateSessionId(session);
       const validSince = typeof sinceMs === 'number' && sinceMs >= 0 ? sinceMs : undefined;
 
-      // Get logs with optional session filter
+      // If this instance is not the ingest owner but a global ingest exists, proxy via HTTP
+      const ingestBase = (process.env.BROWSER_ECHO_INGEST_BASE || '').replace(/\/$/, '');
+      const logsRoute = process.env.BROWSER_ECHO_LOGS_ROUTE || '/__client-logs';
+      const ingestOwner = String(process.env.BROWSER_ECHO_INGEST_OWNER || '1') === '1';
+
+      if (!ingestOwner && ingestBase) {
+        try {
+          const url = new URL(`${ingestBase}${logsRoute}`);
+          if (validSession) url.searchParams.set('session', validSession);
+          const res = await fetch(url.toString(), { method: 'GET', cache: 'no-store' as any });
+          const text = await res.text();
+          // Basic line filtering client-side when proxying (best-effort)
+          let lines = text.split(/\r?\n/g).filter(Boolean);
+          if (level?.length) {
+            const levelSet = new Set(level.map(l => String(l).toUpperCase()));
+            lines = lines.filter(l => {
+              const m = l.match(/\]\s+([A-Z]+):\s/);
+              return m ? levelSet.has(m[1]) : true;
+            });
+          }
+          if (contains) lines = lines.filter(l => l.includes(contains));
+          // Apply simple limit from the end
+          if (limit && lines.length > limit) lines = lines.slice(-limit);
+          const body = lines.join('\n');
+          return { content: [{ type: 'text' as const, text: body || 'No logs available yet.' }] };
+        } catch {
+          // Fall back to local store if proxy fails
+        }
+      }
+
+      // Get logs with optional session filter from local store
       let items = store.snapshot(validSession);
       if (validSince) items = items.filter(e => !e.time || e.time >= validSince);
       if (level?.length) items = items.filter(e => level.includes(e.level));

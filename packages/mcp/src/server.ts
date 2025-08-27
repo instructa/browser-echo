@@ -2,6 +2,8 @@ import { createServer as createNodeServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 
 import { createApp, createRouter, defineEventHandler, getQuery, readRawBody, setResponseStatus, toNodeListener } from 'h3';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -278,6 +280,12 @@ export async function startHttpServer(
   console.log(`MCP (Streamable HTTP) listening → http://${opts.host}:${opts.port}${opts.endpoint}`);
   // eslint-disable-next-line no-console
   console.log(`Log ingest endpoint        → http://${opts.host}:${opts.port}${opts.logsRoute}`);
+  // Expose ingest discovery for other MCP instances in the same process tree
+  try {
+    process.env.BROWSER_ECHO_INGEST_BASE = `http://${opts.host}:${opts.port}`;
+    process.env.BROWSER_ECHO_LOGS_ROUTE = String(opts.logsRoute);
+    process.env.BROWSER_ECHO_INGEST_OWNER = '1';
+  } catch {}
 }
 
 /** Start a minimal HTTP server exposing ONLY:
@@ -365,6 +373,12 @@ export async function startIngestOnlyServer(
           if (res && res.ok) {
             // eslint-disable-next-line no-console
             console.error(`Ingest server already running at ${base}${opts.logsRoute}. Reusing existing instance.`);
+            // Expose discovery for non-owner instances
+            try {
+              process.env.BROWSER_ECHO_INGEST_BASE = base;
+              process.env.BROWSER_ECHO_LOGS_ROUTE = String(opts.logsRoute);
+              process.env.BROWSER_ECHO_INGEST_OWNER = '0';
+            } catch {}
             return; // Treat as success
           }
         } catch {}
@@ -376,6 +390,18 @@ export async function startIngestOnlyServer(
 
   // eslint-disable-next-line no-console
   console.error(`Log ingest endpoint        → http://${opts.host}:${actualPort}${opts.logsRoute}`);
+  // Write project-local discovery file for frameworks/tools to find ingest
+  try {
+    const discPath = join(process.cwd(), '.browser-echo-mcp.json');
+    const payload = { url: `http://${opts.host}:${actualPort}`, route: String(opts.logsRoute), timestamp: Date.now() };
+    writeFileSync(discPath, JSON.stringify(payload));
+  } catch {}
+  // Expose discovery for owner instance
+  try {
+    process.env.BROWSER_ECHO_INGEST_BASE = `http://${opts.host}:${actualPort}`;
+    process.env.BROWSER_ECHO_LOGS_ROUTE = String(opts.logsRoute);
+    process.env.BROWSER_ECHO_INGEST_OWNER = '1';
+  } catch {}
 }
 
 // Removed project JSON discovery in single-server mode
@@ -409,6 +435,13 @@ function createLogIngestRoutes(store: LogStore, logsRoute: `/${string}`) {
       const hdrs = event.node.req.headers;
       const projectHeader = (hdrs['x-browser-echo-project-name'] || hdrs['x-project-name'] || hdrs['x-project'] || '') as string | string[] | undefined;
       const projectName = Array.isArray(projectHeader) ? String(projectHeader[0] || '') : String(projectHeader || '');
+      // Special command: remote clear request
+      const isClear = payload.entries.length === 1 && String(payload.entries[0]?.text || '') === '__BROWSER_ECHO_CLEAR__';
+      if (isClear) {
+        store.clear({ session: sid ? String(sid).slice(0,8) : undefined, scope: 'hard', project: projectName || undefined });
+        setResponseStatus(event, 204);
+        return '';
+      }
       for (const entry of payload.entries as Array<{ level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; }>) {
         const level = normalizeLevel(entry.level);
         store.append({
