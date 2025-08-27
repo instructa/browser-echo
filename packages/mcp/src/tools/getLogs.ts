@@ -1,6 +1,9 @@
 import type { McpToolContext } from '../types';
 import { GetLogsSchema } from '../schemas/logs';
 import { validateSessionId } from '../store';
+import { readJsonl } from '../file-store';
+import { promises as fsp } from 'node:fs';
+import { dirname, join as joinPath } from 'node:path';
 
 export function registerGetLogsTool(ctx: McpToolContext) {
   const { mcp, store } = ctx;
@@ -10,7 +13,6 @@ export function registerGetLogsTool(ctx: McpToolContext) {
     'Fetch recent frontend browser console logs (errors/warnings/info). Use this when checking hydration errors, network failures, or React/Next warnings.',
     GetLogsSchema,
     async (args, _extra) => {
-      // Ensure args is always an object to prevent destructuring issues
       const safeArgs = args || {} as any;
       const {
         level,
@@ -19,14 +21,49 @@ export function registerGetLogsTool(ctx: McpToolContext) {
         limit = 1000,
         contains,
         sinceMs,
+        sinceId,          // <— new
         project,
-        // Removed: autoBaseline and stackedMode
       } = safeArgs as typeof GetLogsSchema['_output'];
 
       const validSession = validateSessionId(session);
       const validSince = typeof sinceMs === 'number' && sinceMs >= 0 ? sinceMs : undefined;
 
-      // Get logs with optional session filter
+      const baseDir = (process.env.BROWSER_ECHO_DIR || '.browser-echo').trim() || '.browser-echo';
+      const activeFile = await resolveActiveLogFile(baseDir);
+      if (activeFile) {
+        const { items, nextSinceId } = await readJsonl(activeFile, {
+          sinceId,
+          sinceMs: validSince,
+          levels: level,
+          project,
+          contains,
+          limit
+        });
+
+        if (items.length === 0) {
+          const tailHint = typeof sinceId === 'number' ? ` (sinceId=${sinceId})` : '';
+          return { content: [{ type: 'text' as const, text: `No logs found in ${activeFile}${tailHint}.` }] };
+        }
+
+        const lines = items.map((e) => {
+          const sid = String(e.sessionId || 'anon').slice(0, 8);
+          const lvl = String(e.level || 'log').toUpperCase();
+          const projectTag = e.project ? `[${e.project}] ` : '';
+          const tag = '[browser]';
+          let line = `${projectTag}${tag} [${sid}] ${lvl}: ${e.message}`;
+          if (e.source) line += ` (${e.source})`;
+          const stack = includeStack ? (e.meta?.stack ? String(e.meta.stack) : '') : '';
+          if (stack && stack.trim()) {
+            const indented = stack.split(/\r?\n/g).map(l => l ? `    ${l}` : l).join('\n');
+            return `${line}\n${indented}`;
+          }
+          return line;
+        }).join('\n');
+
+        const footer = `\n\n[nextSinceId: ${nextSinceId}]`;
+        return { content: [{ type: 'text' as const, text: lines + footer }] };
+      }
+
       let items = store.snapshot(validSession);
       if (validSince) items = items.filter(e => !e.time || e.time >= validSince);
       if (level?.length) items = items.filter(e => level.includes(e.level));
@@ -157,4 +194,23 @@ export function registerGetLogsTool(ctx: McpToolContext) {
       };
     }
   );
+}
+
+async function resolveActiveLogFile(baseDir = '.browser-echo'): Promise<string | null> {
+  try {
+    const cfgPath = joinPath(baseDir, 'config.json');
+    const stat = await fsp.stat(cfgPath).catch(() => null);
+    if (!stat || !stat.isFile()) return null;
+    const ptrPath = joinPath(baseDir, 'current');
+    const rel = (await fsp.readFile(ptrPath, 'utf-8').catch(() => '')).trim();
+    if (!rel) return null;
+    const file = joinPath(baseDir, rel, 'client.jsonl');
+    // Ensure parent dir exists; do not create file here
+    await fsp.mkdir(dirname(file), { recursive: true }).catch(() => {});
+    const fstat = await fsp.stat(file).catch(() => null);
+    if (!fstat || !fstat.isFile()) return file; // may not exist yet, but path is valid
+    return file;
+  } catch {
+    return null;
+  }
 }

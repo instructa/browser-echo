@@ -41,14 +41,9 @@ const cli = defineCommand({
       process.env.BROWSER_ECHO_BUFFER_SIZE = String(args.buffer);
     }
 
-    // Transport auto-detection:
-    // - Prefer Streamable HTTP when running interactively in a terminal (TTY)
-    // - Fall back to stdio when not attached to a TTY (e.g., spawned by an editor/agent)
-    // - Respect --http to force HTTP regardless of TTY
     const isInteractiveTty = Boolean((process as any).stdout?.isTTY) && Boolean((process as any).stdin?.isTTY);
     const useHttp = Boolean(args.http) || isInteractiveTty;
 
-    // Start server with selected transport. Prefer 5179 for ingest if stdio.
     await startServer(mcp, useHttp ? {
       type: 'http',
       host: String(args.host),
@@ -56,10 +51,7 @@ const cli = defineCommand({
       endpoint: String(args.endpoint) as `/${string}`,
       logsRoute: String(args.logsRoute) as `/${string}`
     } : {
-      type: 'stdio',
-      host: String(args.host),
-      port: Number(args.port) | 0,
-      logsRoute: String(args.logsRoute) as `/${string}`
+      type: 'stdio'
     });
   }
 });

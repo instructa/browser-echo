@@ -1,4 +1,50 @@
 import { defineEventHandler, readBody, setResponseStatus } from 'h3';
+import { promises as fs } from 'node:fs';
+import { dirname, join as joinPath } from 'node:path';
+
+async function resolveActiveLogFile(baseDir = '.browser-echo'): Promise<string | null> {
+  try {
+    const cfgPath = joinPath(baseDir, 'config.json');
+    const stat = await fs.stat(cfgPath).catch(() => null);
+    if (!stat || !stat.isFile()) return null;
+
+    const currentFile = joinPath(baseDir, 'current');
+    const cur = await fs.readFile(currentFile, 'utf-8').catch(() => '');
+    const rel = cur.trim();
+    if (!rel) return null;
+
+    const clientJsonl = joinPath(baseDir, rel, 'client.jsonl');
+    const parent = dirname(clientJsonl);
+    await fs.mkdir(parent, { recursive: true }).catch(() => {});
+    return clientJsonl;
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeMessage(s: unknown, maxBytes = 4096): string {
+  const str = typeof s === 'string' ? s : (s == null ? '' : String(s));
+  const enc = new TextEncoder();
+  const bytes = enc.encode(str);
+  if (bytes.byteLength <= maxBytes) return str;
+  let lo = 0, hi = str.length, mid = 0;
+  while (lo < hi) {
+    mid = Math.floor((lo + hi + 1) / 2);
+    const slice = enc.encode(str.slice(0, mid));
+    if (slice.byteLength <= maxBytes - 3) lo = mid; else hi = mid - 1;
+  }
+  return str.slice(0, lo) + '…';
+}
+
+async function appendJsonl(file: string, rows: any[]): Promise<void> {
+  const handle = await fs.open(file, 'a');
+  try {
+    const lines = rows.map((o) => JSON.stringify(o)).join('\n') + '\n';
+    await handle.appendFile(lines, 'utf-8');
+  } finally {
+    await handle.close();
+  }
+}
 
 const MCP_BASE = (process.env.BROWSER_ECHO_MCP_URL || 'http://127.0.0.1:5179').replace(/\/$/, '').replace(/\/mcp$/i, '');
 let __probeStarted = false;
@@ -39,6 +85,29 @@ export default defineEventHandler(async (event) => {
 
   if (!payload || !Array.isArray(payload.entries)) {
     setResponseStatus(event, 400); return 'invalid payload';
+  }
+
+  const logFile = await resolveActiveLogFile(process.env.BROWSER_ECHO_DIR || '.browser-echo');
+  if (logFile) {
+    try {
+      const projectName = (process.env.BROWSER_ECHO_PROJECT_NAME || (process.env.npm_package_name || '')).trim();
+      const nowIso = new Date().toISOString();
+      const rows = payload.entries.map((e) => ({
+        timestamp: e.time ? new Date(e.time).toISOString() : nowIso,
+        level: String(e.level || 'log'),
+        source: e.source || '',
+        message: sanitizeMessage(e.text || ''),
+        meta: e.stack ? { stack: e.stack } : {},
+        sessionId: String(payload!.sessionId || 'anon'),
+        project: projectName || undefined
+      }));
+      await appendJsonl(logFile, rows);
+      __hasForwardedOnce = true;
+      setResponseStatus(event, 204);
+      return '';
+    } catch {
+      // continue to HTTP fallback
+    }
   }
 
   const baseUrl = MCP_BASE;

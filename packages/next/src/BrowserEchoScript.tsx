@@ -13,6 +13,12 @@ export interface BrowserEchoScriptProps {
   stackMode?: 'none' | 'condensed' | 'full';
   showSource?: boolean;
   batch?: { size?: number; interval?: number };
+
+  /** Optional: where the server route should look for Browser Echo file logs (default ".browser-echo"). */
+  logDirectory?: string;
+
+  /** Optional: preferred session mode; informational only for now. */
+  sessionMode?: 'timestamped' | 'single';
 }
 
 export default function BrowserEchoScript(props: BrowserEchoScriptProps): JSX.Element {

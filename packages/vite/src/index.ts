@@ -1,8 +1,37 @@
 // Avoid exporting Vite types to prevent cross-version type mismatches in consumers
 import ansis from 'ansis';
 import type { BrowserLogLevel } from '@browser-echo/core';
-import { mkdirSync, appendFileSync } from 'node:fs';
+import { mkdirSync, appendFileSync, statSync, readFileSync } from 'node:fs';
 import { join as joinPath, dirname } from 'node:path';
+
+function resolveBrowserEchoClientJsonl(baseDir = '.browser-echo'): string | null {
+  try {
+    const cfg = joinPath(baseDir, 'config.json');
+    const cfgStat = statSync(cfg);
+    if (!cfgStat.isFile()) return null;
+  } catch { return null; }
+  try {
+    const cur = readFileSync(joinPath(baseDir, 'current'), 'utf-8').trim();
+    if (!cur) return null;
+    const file = joinPath(baseDir, cur, 'client.jsonl');
+    mkdirSync(dirname(file), { recursive: true });
+    return file;
+  } catch { return null; }
+}
+
+function sanitizeMessage(s: unknown, maxBytes = 4096): string {
+  const str = typeof s === 'string' ? s : (s == null ? '' : String(s));
+  const enc = new TextEncoder();
+  const bytes = enc.encode(str);
+  if (bytes.byteLength <= maxBytes) return str;
+  let lo = 0, hi = str.length, mid = 0;
+  while (lo < hi) {
+    mid = Math.floor((lo + hi + 1) / 2);
+    const slice = enc.encode(str.slice(0, mid));
+    if (slice.byteLength <= maxBytes - 3) lo = mid; else hi = mid - 1;
+  }
+  return str.slice(0, lo) + '…';
+}
 
 export interface BrowserLogsToTerminalOptions {
   enabled?: boolean;
@@ -97,10 +126,9 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
   const logFilePath = joinPath(options.fileLog.dir, `dev-${sessionStamp}.log`);
   if (options.fileLog.enabled) { try { mkdirSync(dirname(logFilePath), { recursive: true }); } catch {} }
 
-  // Single global server model: compute base; manage connection state
   let resolvedBase = '';
   let resolvedIngest = '';
-  let hasForwardedSuccessfully = false; // suppress only after first confirmed 2xx
+  let hasForwardedSuccessfully = false;
   let lastAnnouncement = '';
 
   const announce = (msg: string) => {
@@ -120,36 +148,28 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
 
   computeBaseOnce();
 
-  // Start a small background probe to detect MCP coming online after Vite
-  startHealthProbe();
-
-  async function probeHealth(): Promise<boolean> {
+  let probeStarted = false;
+  async function probeHealthOnce(): Promise<boolean> {
     try {
       const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 400);
+      const timeout = setTimeout(() => ctrl.abort(), 400);
       const res = await fetch(`${resolvedBase}/health`, { signal: ctrl.signal as any, cache: 'no-store' as any });
-      clearTimeout(t);
+      clearTimeout(timeout);
       return !!res && res.ok;
-    } catch {
-      return false;
-    }
+    } catch { return false; }
   }
 
   function startHealthProbe() {
-    // Only starts once per dev server process
-    let started = false;
-    if (started) return;
-    started = true;
-    const interval = setInterval(async () => {
-      if (hasForwardedSuccessfully) return; // already forwarding
-      const ok = await probeHealth();
-      if (ok) {
-        hasForwardedSuccessfully = true;
-        announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
-      }
+    if (probeStarted) return;
+    probeStarted = true;
+    setInterval(async () => {
+      if (hasForwardedSuccessfully) return;
+      const ok = await probeHealthOnce();
+      if (ok) hasForwardedSuccessfully = true;
     }, 1500);
-    // NOTE: we intentionally do not clear the interval; it's cheap and guarded above.
   }
+
+  startHealthProbe();
 
   server.middlewares.use(options.route, (req: import('http').IncomingMessage, res: import('http').ServerResponse, next: Function) => {
     if (req.method !== 'POST') return next();
@@ -160,33 +180,60 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
 
       if (!payload || !Array.isArray(payload.entries)) { res.statusCode = 400; res.end('invalid payload'); return; }
 
-      // Mirror to MCP server (fire-and-forget) and update connection state
-      const targetIngest = resolvedIngest;
+      // Prefer shared Browser Echo JSONL file if configured
+      let wroteToSharedJsonl = false;
       try {
-        const projectName = (process.env.BROWSER_ECHO_PROJECT_NAME || (process.env.npm_package_name || '')).trim();
-        const extraHeaders: Record<string,string> = {};
-        if (projectName) extraHeaders['X-Browser-Echo-Project-Name'] = projectName;
-        const ctrl = new AbortController();
-        const timeout = setTimeout(() => ctrl.abort(), 500);
-        fetch(targetIngest, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', ...extraHeaders, ...options.mcp.headers },
-          body: JSON.stringify(payload),
-          keepalive: true,
-          cache: 'no-store',
-          signal: ctrl.signal as any
-        }).then((res) => {
-          clearTimeout(timeout);
-          const ok = !!res && res.ok;
-          if (ok && !hasForwardedSuccessfully) {
-            hasForwardedSuccessfully = true;
-            announce(`${options.tag} forwarding logs to MCP ingest at ${targetIngest}`);
-          }
-        }).catch(() => { try { clearTimeout(timeout); } catch {} });
-      } catch {}
+        const beFile = resolveBrowserEchoClientJsonl(process.env.BROWSER_ECHO_DIR || '.browser-echo');
+        if (beFile) {
+          const projectName = (process.env.BROWSER_ECHO_PROJECT_NAME || (process.env.npm_package_name || '')).trim();
+          const nowIso = new Date().toISOString();
+          const rows = payload.entries.map((e) => ({
+            timestamp: e.time ? new Date(e.time).toISOString() : nowIso,
+            level: String(e.level || 'log'),
+            source: e.source || '',
+            message: sanitizeMessage(e.text || ''),
+            meta: e.stack ? { stack: e.stack } : {},
+            sessionId: String(payload!.sessionId || 'anon'),
+            project: projectName || undefined
+          }));
+          const lines = rows.map((o) => JSON.stringify(o)).join('\n') + '\n';
+          appendFileSync(beFile, lines, 'utf-8');
+          wroteToSharedJsonl = true;
+          hasForwardedSuccessfully = true; // suppress local printing after first success
+          announce(`${options.tag} writing logs to ${beFile}`);
+        }
+      } catch {
+        // ignore and fallback
+      }
+
+      // Mirror to MCP server only when shared JSONL write not active
+      if (!wroteToSharedJsonl) {
+        const targetIngest = resolvedIngest;
+        try {
+          const projectName = (process.env.BROWSER_ECHO_PROJECT_NAME || (process.env.npm_package_name || '')).trim();
+          const extraHeaders: Record<string,string> = {};
+          if (projectName) extraHeaders['X-Browser-Echo-Project-Name'] = projectName;
+          const ctrl = new AbortController();
+          const timeout = setTimeout(() => ctrl.abort(), 500);
+          fetch(targetIngest, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', ...extraHeaders, ...options.mcp.headers },
+            body: JSON.stringify(payload),
+            keepalive: true,
+            cache: 'no-store',
+            signal: ctrl.signal as any
+          }).then((res) => {
+            clearTimeout(timeout);
+            const ok = !!res && res.ok;
+            if (ok && !hasForwardedSuccessfully) {
+              hasForwardedSuccessfully = true;
+              announce(`${options.tag} forwarding logs to MCP ingest at ${targetIngest}`);
+            }
+          }).catch(() => { try { clearTimeout(timeout); } catch {} });
+        } catch {}
+      }
 
       const logger = server.config.logger;
-      // Only suppress after first successful forward; never re-enable
       const shouldPrint = !hasForwardedSuccessfully;
       const sid = (payload.sessionId ?? 'anon').slice(0, 8);
       for (const entry of payload.entries) {
@@ -206,6 +253,7 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
           print(logger, level, ansis.dim(lines));
         }
 
+        // Retain optional local fileLog for developers (unchanged)
         if (options.fileLog.enabled) {
           const time = new Date().toISOString();
           const toFile = [`[${time}] ${line}`];

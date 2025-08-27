@@ -1,6 +1,9 @@
 import { createServer as createNodeServer } from 'node:http';
+import { promises as fsp } from 'node:fs';
+import { join as joinPath } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
+import { loadConfig as beLoadConfig, ensureSession as beEnsureSession, writeCurrent as beWriteCurrent, type EchoConfig } from './file-store';
 import { createApp, createRouter, defineEventHandler, getQuery, readRawBody, setResponseStatus, toNodeListener } from 'h3';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -59,17 +62,33 @@ export async function startServer(
     const transport = new StdioServerTransport();
     await server.connect(transport);
 
-    // Always bring up an ingest-only HTTP endpoint so clients/frameworks can POST logs
-    const host = options.host || '127.0.0.1';
-    // Prefer stable 5179 for discovery; allow override via options/env; fallback handled in startIngestOnlyServer
-    const envIngest = process.env.BROWSER_ECHO_INGEST_PORT;
-    const preferred = (options.port ?? (envIngest ? Number(envIngest) | 0 : 5179)) | 0;
-    const port = preferred > 0 ? preferred : 5179;
-    const logsRoute = options.logsRoute || '/__client-logs';
-    await startIngestOnlyServer(store, { host, port, logsRoute });
+    // Bootstrap .browser-echo
+    const baseDir = (process.env.BROWSER_ECHO_DIR || '.browser-echo').trim() || '.browser-echo';
+    let cfg: EchoConfig | null = await beLoadConfig(baseDir);
 
-    // eslint-disable-next-line no-console
-    console.error('MCP (stdio) listening on stdio (ingest HTTP active)');
+    if (!cfg) {
+      // Create default config.json if missing
+      try { await fsp.mkdir(baseDir, { recursive: true }); } catch {}
+      cfg = {
+        version: 1,
+        logDirectory: baseDir,
+        sessionMode: 'timestamped'
+      };
+      try {
+        await fsp.writeFile(joinPath(baseDir, 'config.json'), JSON.stringify(cfg, null, 2) + '\n', 'utf-8');
+      } catch {}
+    }
+
+    try {
+      const { sessionRel, clientPath } = await beEnsureSession(cfg);
+      await beWriteCurrent(baseDir, sessionRel);
+      // stderr-only diagnostics to avoid stdout leakage on stdio transport
+      console.error(`MCP (stdio) ready. Browser Echo file session → ${clientPath}`);
+    } catch (e) {
+      console.error('Failed to bootstrap Browser Echo file session:', (e as Error)?.message || e);
+    }
+
+    // NOTE: No ingest-only HTTP server in stdio mode anymore.
     return;
   }
 
