@@ -1,7 +1,7 @@
 // Avoid exporting Vite types to prevent cross-version type mismatches in consumers
 import ansis from 'ansis';
 import type { BrowserLogLevel, NetworkCaptureOptions } from '@browser-echo/core';
-import { mkdirSync, appendFileSync } from 'node:fs';
+import { mkdirSync, appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join as joinPath, dirname } from 'node:path';
 
 export interface BrowserLogsToTerminalOptions {
@@ -53,9 +53,9 @@ export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): an
     fileLog: { ...DEFAULTS.fileLog, ...(opts.fileLog ?? {}) },
     mcp: {
       url: normalizeMcpBaseUrl(opts.mcp?.url || ''),
-      routeLogs: (opts.mcp?.routeLogs || '/__client-logs') as `/${string}`,
-      suppressTerminal: typeof opts.mcp?.suppressTerminal === 'boolean' ? opts.mcp.suppressTerminal : false,
-      headers: opts.mcp?.headers || {},
+      routeLogs: (opts.mcp?.routeLogs ?? DEFAULTS.mcp.routeLogs) as `/${string}`,
+      suppressTerminal: (opts.mcp?.suppressTerminal ?? DEFAULTS.mcp.suppressTerminal) as boolean,
+      headers: opts.mcp?.headers ?? {},
       suppressProvided: typeof opts.mcp?.suppressTerminal === 'boolean'
     }
   };
@@ -103,7 +103,7 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
   // Single global server model: compute base; manage connection state
   let resolvedBase = '';
   let resolvedIngest = '';
-  let hasForwardedSuccessfully = false; // suppress only after first confirmed 2xx
+  let isRemoteAvailable = false; // reflects current availability of the configured/current MCP ingest
   let lastAnnouncement = '';
 
   const announce = (msg: string) => {
@@ -114,20 +114,49 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
   };
 
   function computeBaseOnce() {
-    const base = String(options.mcp.url || process.env.BROWSER_ECHO_MCP_URL || 'http://127.0.0.1:5179')
-      .replace(/\/$/, '')
-      .replace(/\/mcp$/i, '');
-    resolvedBase = base;
-    resolvedIngest = `${base}${options.mcp.routeLogs}`;
+    // 1) Explicit URL provided via options or env has highest priority
+    const explicit = String(options.mcp.url || process.env.BROWSER_ECHO_MCP_URL || '').trim();
+    if (explicit) {
+      const base = explicit.replace(/\/$/, '').replace(/\/mcp$/i, '');
+      resolvedBase = base;
+      resolvedIngest = `${base}${options.mcp.routeLogs}`;
+      return;
+    }
+
+    // 2) Project-local discovery file in CWD (do not default to port 5179)
+    try {
+      const discPath = joinPath(process.cwd(), '.browser-echo-mcp.json');
+      if (existsSync(discPath)) {
+        try {
+          const txt = readFileSync(discPath, 'utf-8');
+          const obj = JSON.parse(txt || '{}') as { url?: string; route?: string };
+          if (obj && obj.url) {
+            const base = String(obj.url).trim().replace(/\/$/, '').replace(/\/mcp$/i, '');
+            const route = (obj as any).route || options.mcp.routeLogs || '/__client-logs';
+            resolvedBase = base;
+            resolvedIngest = `${base}${route as `/${string}`}`;
+            return;
+          }
+        } catch {}
+      }
+    } catch {}
+
+    // 3) No configured or discovered MCP → keep base empty; do not probe, always print locally
+    resolvedBase = '';
+    resolvedIngest = '';
   }
 
   computeBaseOnce();
+  // If we have a configured/discovered MCP, assume available initially so terminal is suppressed.
+  // We'll flip to unavailable on probe/forward failure and resume terminal printing.
+  isRemoteAvailable = !!resolvedBase;
 
-  // Start a small background probe to detect MCP coming online after Vite
+  // Start a small background probe to detect MCP availability transitions (only when a base is known)
   startHealthProbe();
 
   async function probeHealth(): Promise<boolean> {
     try {
+      if (!resolvedBase) return false;
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 400);
       const res = await fetch(`${resolvedBase}/health`, { signal: ctrl.signal as any, cache: 'no-store' as any });
@@ -144,14 +173,18 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
     if (started) return;
     started = true;
     const interval = setInterval(async () => {
-      if (hasForwardedSuccessfully) return; // already forwarding
+      if (!resolvedBase) return; // nothing to probe without a known/current MCP
       const ok = await probeHealth();
-      if (ok) {
-        hasForwardedSuccessfully = true;
+      if (ok && !isRemoteAvailable) {
+        isRemoteAvailable = true;
         announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
+      } else if (!ok && isRemoteAvailable) {
+        // MCP became unavailable → resume terminal printing
+        isRemoteAvailable = false;
+        announce(`${options.tag} MCP ingest unavailable; printing logs locally`);
       }
     }, 1500);
-    // NOTE: we intentionally do not clear the interval; it's cheap and guarded above.
+    // NOTE: we intentionally do not clear the interval.
   }
 
   server.middlewares.use(options.route, (req: import('http').IncomingMessage, res: import('http').ServerResponse, next: Function) => {
@@ -166,31 +199,42 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
       // Mirror to MCP server (fire-and-forget) and update connection state
       const targetIngest = resolvedIngest;
       try {
-        const projectName = (process.env.BROWSER_ECHO_PROJECT_NAME || (process.env.npm_package_name || '')).trim();
-        const extraHeaders: Record<string,string> = {};
-        if (projectName) extraHeaders['X-Browser-Echo-Project-Name'] = projectName;
-        const ctrl = new AbortController();
-        const timeout = setTimeout(() => ctrl.abort(), 500);
-        fetch(targetIngest, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', ...extraHeaders, ...options.mcp.headers },
-          body: JSON.stringify(payload),
-          keepalive: true,
-          cache: 'no-store',
-          signal: ctrl.signal as any
-        }).then((res) => {
-          clearTimeout(timeout);
-          const ok = !!res && res.ok;
-          if (ok && !hasForwardedSuccessfully) {
-            hasForwardedSuccessfully = true;
-            announce(`${options.tag} forwarding logs to MCP ingest at ${targetIngest}`);
-          }
-        }).catch(() => { try { clearTimeout(timeout); } catch {} });
+        if (targetIngest) {
+          const projectName = (process.env.BROWSER_ECHO_PROJECT_NAME || (process.env.npm_package_name || '')).trim();
+          const extraHeaders: Record<string,string> = {};
+          if (projectName) extraHeaders['X-Browser-Echo-Project-Name'] = projectName;
+          const ctrl = new AbortController();
+          const timeout = setTimeout(() => ctrl.abort(), 500);
+          fetch(targetIngest, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', ...extraHeaders, ...options.mcp.headers },
+            body: JSON.stringify(payload),
+            keepalive: true,
+            cache: 'no-store',
+            signal: ctrl.signal as any
+          }).then((res) => {
+            clearTimeout(timeout);
+            const ok = !!res && res.ok;
+            if (ok && !isRemoteAvailable) {
+              isRemoteAvailable = true;
+              announce(`${options.tag} forwarding logs to MCP ingest at ${targetIngest}`);
+            } else if (!ok && isRemoteAvailable) {
+              isRemoteAvailable = false;
+              announce(`${options.tag} MCP ingest unavailable; printing logs locally`);
+            }
+          }).catch(() => {
+            try { clearTimeout(timeout); } catch {}
+            if (isRemoteAvailable) {
+              isRemoteAvailable = false;
+              announce(`${options.tag} MCP ingest unavailable; printing logs locally`);
+            }
+          });
+        }
       } catch {}
 
       const logger = server.config.logger;
-      // Only suppress after first successful forward; never re-enable
-      const shouldPrint = !hasForwardedSuccessfully;
+      // Suppress when user requests it AND a current MCP endpoint is configured AND is considered available
+      const shouldPrint = !options.mcp.suppressTerminal || !resolvedBase || !isRemoteAvailable;
       const sid = (payload.sessionId ?? 'anon').slice(0, 8);
       for (const entry of payload.entries) {
         const level = normalizeLevel(entry.level);
