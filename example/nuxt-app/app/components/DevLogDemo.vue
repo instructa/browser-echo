@@ -12,6 +12,7 @@
       <button @click="testComplexObject">Test Complex Object</button>
       <button @click="testMultipleArgs">Test Multiple Arguments</button>
       <button @click="testBatchLogging">Test Batch Logging</button>
+      <button @click="testNetworkRequests">Test Network Requests</button>
     </div>
 
     <div class="info">
@@ -73,6 +74,31 @@ const testBatchLogging = () => {
   console.warn('Batch log 3: Almost done');
   console.log('Batch log 4: Batch complete');
   console.log('These logs might be batched together for efficiency');
+};
+
+const testNetworkRequests = async () => {
+  console.log('🌐 Testing network requests...');
+
+  try {
+    // Test successful fetch
+    await fetch('https://jsonplaceholder.typicode.com/posts/1');
+    console.log('✅ Successful fetch completed');
+
+    // Test POST request
+    await fetch('https://jsonplaceholder.typicode.com/posts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Test', body: 'Test body' })
+    });
+    console.log('✅ POST request completed');
+
+    // Test 404 error
+    await fetch('https://jsonplaceholder.typicode.com/posts/999999');
+    console.log('⚠️ 404 request completed');
+
+  } catch (error) {
+    console.error('🌐 Network test error:', error);
+  }
 };
 
 // Log on component mount

@@ -1,6 +1,6 @@
 // Avoid exporting Vite types to prevent cross-version type mismatches in consumers
 import ansis from 'ansis';
-import type { BrowserLogLevel } from '@browser-echo/core';
+import type { BrowserLogLevel, NetworkCaptureOptions } from '@browser-echo/core';
 import { mkdirSync, appendFileSync } from 'node:fs';
 import { join as joinPath, dirname } from 'node:path';
 
@@ -18,12 +18,14 @@ export interface BrowserLogsToTerminalOptions {
   truncate?: number;
   fileLog?: { enabled?: boolean; dir?: string };
   mcp?: { url?: string; routeLogs?: `/${string}`; suppressTerminal?: boolean; headers?: Record<string,string> };
+  network?: NetworkCaptureOptions;
 }
 
-type ResolvedOptions = Required<Omit<BrowserLogsToTerminalOptions, 'batch' | 'fileLog' | 'mcp'>> & {
+type ResolvedOptions = Required<Omit<BrowserLogsToTerminalOptions, 'batch' | 'fileLog' | 'mcp' | 'network'>> & {
   batch: Required<NonNullable<BrowserLogsToTerminalOptions['batch']>>;
   fileLog: Required<NonNullable<BrowserLogsToTerminalOptions['fileLog']>>;
   mcp: { url: string; routeLogs: `/${string}`; suppressTerminal: boolean; headers: Record<string,string>; suppressProvided: boolean };
+  network?: NetworkCaptureOptions;
 };
 
 const DEFAULTS: ResolvedOptions = {
@@ -39,7 +41,8 @@ const DEFAULTS: ResolvedOptions = {
   batch: { size: 20, interval: 300 },
   truncate: 10_000,
   fileLog: { enabled: false, dir: 'logs/frontend' },
-  mcp: { url: '', routeLogs: '/__client-logs', suppressTerminal: true, headers: {}, suppressProvided: false }
+  mcp: { url: '', routeLogs: '/__client-logs', suppressTerminal: true, headers: {}, suppressProvided: false },
+  network: { enabled: true }
 };
 
 export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): any {
@@ -257,16 +260,17 @@ function colorize(level: BrowserLogLevel, message: string): string {
 
 type ClientPayload = { sessionId?: string; entries: Array<{ level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; }>; };
 
-function makeClientModule(options: Required<BrowserLogsToTerminalOptions>) {
+function makeClientModule(options: ResolvedOptions) {
   const include = JSON.stringify(options.include);
   const preserve = JSON.stringify(options.preserveConsole);
   const route = JSON.stringify(options.route);
   const tag = JSON.stringify(options.tag);
   const batchSize = String(options.batch?.size ?? 20);
   const batchInterval = String(options.batch?.interval ?? 300);
+  const network = JSON.stringify(options.network ?? null);
   return `
 const __INSTALLED_KEY = '__vite_browser_echo_installed__';
-if (!window[__INSTALLED_KEY]) {
+if (typeof window !== 'undefined' && !window[__INSTALLED_KEY]) {
   window[__INSTALLED_KEY] = true;
   const INCLUDE = ${include};
   const PRESERVE = ${preserve};
@@ -274,7 +278,9 @@ if (!window[__INSTALLED_KEY]) {
   const TAG = ${tag};
   const BATCH_SIZE = ${batchSize} | 0;
   const BATCH_INTERVAL = ${batchInterval} | 0;
+  const NETWORK = ${network};
   const SESSION = (function(){try{const a=new Uint8Array(8);crypto.getRandomValues(a);return Array.from(a).map(b=>b.toString(16).padStart(2,'0')).join('')}catch{return String(Math.random()).slice(2,10)}})();
+
   const queue = []; let timer = null;
   function enqueue(entry){ queue.push(entry); if (queue.length >= BATCH_SIZE) flush(); else if (!timer) timer = setTimeout(flush, BATCH_INTERVAL); }
   function flush(){ if (timer) { clearTimeout(timer); timer = null; } if (!queue.length) return;
@@ -283,18 +289,97 @@ if (!window[__INSTALLED_KEY]) {
   }
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
   addEventListener('pagehide', flush); addEventListener('beforeunload', flush);
+
+  function safeFormat(v){ if(typeof v==='string') return v; if(v && v instanceof Error) return (v.name||'Error')+': '+(v.message||'');
+    try{const seen=new WeakSet(); return JSON.stringify(v,(k,val)=>{ if(typeof val==='bigint') return String(val)+'n';
+      if(typeof val==='function') return '[Function '+(val.name||'anonymous')+']';
+      if(val && val instanceof Error) return {name:val.name,message:val.message,stack:val.stack};
+      if(typeof val==='symbol') return val.toString();
+      if(val && typeof val==='object'){ if(seen.has(val)) return '[Circular]'; seen.add(val) } return val; }); }
+    catch(e){ try{return String(v)}catch{return '[Unserializable]'} } }
+
   const ORIGINAL = {};
   for (const level of INCLUDE) {
     const orig = console[level] ? console[level].bind(console) : console.log.bind(console);
     ORIGINAL[level] = orig;
     console[level] = (...args) => {
-      const text = args.map((v)=>{try{if(typeof v==='string') return v; if(v instanceof Error) return (v.name||'Error')+': '+(v.message||''); const seen=new WeakSet(); return JSON.stringify(v,(k,val)=>{ if(typeof val==='bigint') return String(val)+'n'; if(typeof val==='function') return '[Function '+(val.name||'anonymous')+']'; if(val instanceof Error) return {name:val.name,message:val.message,stack:val.stack}; if(typeof val==='symbol') return val.toString(); if(val && typeof val==='object'){ if(seen.has(val)) return '[Circular]'; seen.add(val); } return val; }); } catch { try { return String(v) } catch { return '[Unserializable]' } }}).join(' ');
-      const stack = (new Error()).stack || '';
-      enqueue({ level, text, time: Date.now(), stack });
+      const text = args.map(safeFormat).join(' ');
+      enqueue({ level, text, time: Date.now(), stack: '', source: '' });
       if (PRESERVE) { try { orig(...args) } catch {} }
     };
   }
-  try { ORIGINAL['info']?.(TAG + ' forwarding console logs to ' + ROUTE + ' (session ' + SESSION + ')'); } catch {}
+  try { ORIGINAL['info'] && ORIGINAL['info'](TAG + ' forwarding console logs to ' + ROUTE + ' (session ' + SESSION + ')'); } catch {}
+
+  // Network interception (fetch/XHR)
+  try {
+    if (NETWORK && NETWORK.enabled) {
+      // fetch interception
+      try {
+        const captureFetch = (typeof NETWORK.captureFetch === 'boolean') ? NETWORK.captureFetch : true;
+        if (captureFetch && typeof window.fetch === 'function') {
+          const __origFetch = window.fetch.bind(window);
+          window.fetch = (async function(){
+            const args = Array.prototype.slice.call(arguments);
+            let method = 'GET'; let url = '';
+            try {
+              const input = args[0]; const init = args[1] || {};
+              if (typeof input === 'string') url = input; else if (input && typeof input.url === 'string') url = input.url;
+              if (init && init.method) method = String(init.method).toUpperCase(); else if (input && input.method) method = String(input.method).toUpperCase();
+            } catch {}
+            const started = (typeof performance!=='undefined' && performance.now) ? performance.now() : Date.now();
+            try {
+              const res = await __origFetch.apply(window, args);
+              const finished = (typeof performance!=='undefined' && performance.now) ? performance.now() : Date.now();
+              const data = { kind: 'network', transport: 'fetch', method, url, status: (res && typeof res.status==='number') ? res.status : 0, ok: !!(res && res.ok), ms: Math.round(finished-started) };
+              enqueue({ level: 'info', text: 'NET '+JSON.stringify(data), time: Date.now(), stack: '', source: url });
+              return res;
+            } catch (err) {
+              const finished2 = (typeof performance!=='undefined' && performance.now) ? performance.now() : Date.now();
+              const data2 = { kind: 'network', transport: 'fetch', method, url, error: (err && (err.message||String(err))) || 'error', ms: Math.round(finished2-started) };
+              enqueue({ level: 'error', text: 'NET '+JSON.stringify(data2), time: Date.now(), stack: '', source: url });
+              throw err;
+            }
+          });
+        }
+      } catch {}
+      // XHR interception
+      try {
+        const captureXHR = (typeof NETWORK.captureXmlHttpRequest === 'boolean') ? NETWORK.captureXmlHttpRequest : true;
+        if (captureXHR && typeof window.XMLHttpRequest !== 'undefined') {
+          const OrigXHR = window.XMLHttpRequest;
+          function WrappedXHR(){
+            const xhr = new OrigXHR();
+            let method = 'GET'; let url = ''; let start = 0;
+            const origOpen = xhr.open;
+            xhr.open = function(m,u){ try { method = (m||'GET').toUpperCase(); url = u||''; } catch {} return origOpen.apply(xhr, arguments); };
+            const origSend = xhr.send;
+            xhr.send = function(){
+              start = (typeof performance!=='undefined' && performance.now) ? performance.now() : Date.now();
+              try {
+                xhr.addEventListener('loadend', function(){
+                  try {
+                    const end = (typeof performance!=='undefined' && performance.now) ? performance.now() : Date.now();
+                    const status = Number(xhr.status||0); const ok = status>=200 && status<400;
+                    const data = { kind: 'network', transport: 'xhr', method, url, status, ok, ms: Math.round(end-start) };
+                    enqueue({ level: ok ? 'info' : 'error', text: 'NET '+JSON.stringify(data), time: Date.now(), stack: '', source: url });
+                  } catch {}
+                }, { once: true });
+              } catch {}
+              try { return origSend.apply(xhr, arguments); }
+              catch (err) {
+                const end2 = (typeof performance!=='undefined' && performance.now) ? performance.now() : Date.now();
+                const dataE = { kind: 'network', transport: 'xhr', method, url, error: (err && (err.message||String(err))) || 'error', ms: Math.round(end2-start) };
+                enqueue({ level: 'error', text: 'NET '+JSON.stringify(dataE), time: Date.now(), stack: '', source: url });
+                throw err;
+              }
+            };
+            return xhr;
+          }
+          window.XMLHttpRequest = WrappedXHR;
+        }
+      } catch {}
+    }
+  } catch {}
 }
 `;
 }

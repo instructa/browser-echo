@@ -13,6 +13,7 @@ This package provides the `initBrowserEcho` function that patches `console.*` me
 ## Features
 
 - Drop-in client patch that wraps `console.log/info/warn/error/debug`
+- Network request logging (fetch/XMLHttpRequest interception)
 - Batched HTTP requests (uses `sendBeacon` when available)
 - Source hints `(file:line:col)` + stack traces
 - Configurable log levels and batching
@@ -42,7 +43,8 @@ initBrowserEcho({
   preserveConsole: true,
   tag: '[browser]',
   batch: { size: 20, interval: 300 },
-  stackMode: 'condensed'
+  stackMode: 'condensed',
+  network: { enabled: true, captureFetch: true, captureXmlHttpRequest: true }
 });
 ```
 
@@ -59,6 +61,12 @@ interface BrowserEchoOptions {
   include?: BrowserLogLevel[];       // default: ['log','info','warn','error','debug']
   preserveConsole?: boolean;         // default: true (also keep logging in the browser)
   tag?: string;                      // default: '[browser]'
+  // network logging
+  network?: {
+    enabled?: boolean;               // default: true (captures network requests)
+    captureFetch?: boolean;          // default: true (intercepts fetch())
+    captureXmlHttpRequest?: boolean; // default: true (intercepts XMLHttpRequest)
+  };
   // stacks
   stackMode?: 'none' | 'condensed' | 'full'; // default: 'full' (provider-specific; Vite supports all)
   showSource?: boolean;              // default: true (when available)

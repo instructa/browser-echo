@@ -1,4 +1,5 @@
 import { defineNuxtModule, addPlugin, createResolver, addServerHandler, addTemplate } from '@nuxt/kit';
+import type { NetworkCaptureOptions } from '@browser-echo/core';
 
 export interface NuxtBrowserEchoOptions {
   enabled?: boolean;
@@ -8,6 +9,7 @@ export interface NuxtBrowserEchoOptions {
   tag?: string;
   batch?: { size?: number; interval?: number };
   stackMode?: 'full' | 'condensed' | 'none';
+  network?: NetworkCaptureOptions;
 }
 
 const module: any = defineNuxtModule<NuxtBrowserEchoOptions>({
@@ -19,7 +21,8 @@ const module: any = defineNuxtModule<NuxtBrowserEchoOptions>({
     preserveConsole: true,
     tag: '[browser]',
     batch: { size: 20, interval: 300 },
-    stackMode: 'condensed'
+    stackMode: 'condensed',
+    network: { enabled: true }
   },
   setup(options, nuxt) {
     if (!nuxt.options.dev || options.enabled === false) return;
@@ -42,7 +45,8 @@ export default defineNuxtPlugin(() => {
       preserveConsole: options.preserveConsole,
       tag: options.tag,
       batch: options.batch,
-      stackMode: options.stackMode
+      stackMode: options.stackMode,
+      network: options.network
     })});
   }
 });

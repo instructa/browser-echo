@@ -1,7 +1,7 @@
 'use client';
 
 import Script from 'next/script';
-import type { BrowserLogLevel } from '@browser-echo/core';
+import type { BrowserLogLevel, NetworkCaptureOptions } from '@browser-echo/core';
 import type { JSX } from 'react';
 
 export interface BrowserEchoScriptProps {
@@ -13,6 +13,7 @@ export interface BrowserEchoScriptProps {
   stackMode?: 'none' | 'condensed' | 'full';
   showSource?: boolean;
   batch?: { size?: number; interval?: number };
+  network?: NetworkCaptureOptions;
 }
 
 export default function BrowserEchoScript(props: BrowserEchoScriptProps): JSX.Element {
@@ -39,14 +40,14 @@ export default function BrowserEchoScript(props: BrowserEchoScriptProps): JSX.El
   var ROUTE=${JSON.stringify(route)}, INCLUDE=${include}, PRESERVE=${JSON.stringify(preserve)}, TAG=${JSON.stringify(tag)};
   var STACK_MODE=${JSON.stringify(stackMode)}, SHOW_SOURCE=${JSON.stringify(showSource)};
   var BATCH_SIZE=${JSON.stringify(batchSize)}, BATCH_INTERVAL=${JSON.stringify(batchInterval)};
+  var NETWORK=${JSON.stringify(props.network ?? { enabled: true })};
   var SESSION=(function(){try{var a=new Uint8Array(8);crypto.getRandomValues(a);return Array.from(a).map(b=>b.toString(16).padStart(2,'0')).join('')}catch{return String(Math.random()).slice(2,10)}})();
   var q=[],t=null;
   function enqueue(e){q.push(e); if(q.length>=BATCH_SIZE){flush()} else if(!t){t=setTimeout(flush,BATCH_INTERVAL)}}
   function flush(){ if(t){clearTimeout(t); t=null} if(!q.length) return;
     var p=JSON.stringify({sessionId:SESSION,entries:q.splice(0,q.length)});
     try{ if(navigator.sendBeacon) navigator.sendBeacon(ROUTE,new Blob([p],{type:'application/json'}));
-      else fetch(ROUTE,{method:'POST',headers:{'content-type':'application/json'},body:p,keepalive:true,cache:'no-store'}).catch(()=>{}); }catch(_){}
-  }
+      else fetch(ROUTE,{method:'POST',headers:{'content-type':'application/json'},body:p,keepalive:true,cache:'no-store'}).catch(()=>{}); }catch(_){}}
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden') flush()});
   addEventListener('pagehide', flush); addEventListener('beforeunload', flush);
   function safeFormat(v){ if(typeof v==='string') return v; if(v && v instanceof Error) return (v.name||'Error')+': '+(v.message||'');
@@ -59,16 +60,16 @@ export default function BrowserEchoScript(props: BrowserEchoScriptProps): JSX.El
   function captureStack(){ 
     if(STACK_MODE === 'none') return '';
     try{ 
-      var e=new Error(), raw=e.stack||'', lines=raw.split('\\n').slice(1);
+      var e=new Error(), raw=e.stack||'', lines=raw.split('\n').slice(1);
       var filtered = lines.filter(l=>!/browser-echo|captureStack|safeFormat|enqueue|flush/.test(l));
       if(STACK_MODE === 'condensed') {
         // Return only the first meaningful line for condensed mode
-        return filtered.slice(0, 1).join('\\n');
+        return filtered.slice(0, 1).join('\n');
       }
-      return filtered.join('\\n'); 
+      return filtered.join('\n'); 
     }catch{return ''} 
   }
-  function parseSource(stack){ if(!stack) return ''; var m=stack.match(/\\(?((?:file:\\/\\/|https?:\\/\\/|\\/)[^) \\n]+):(\\d+):(\\d+)\\)?/); return m? (m[1]+':'+m[2]+':'+m[3]) : '' }
+  function parseSource(stack){ if(!stack) return ''; var m=stack.match(/\(?((?:file:\/\/|https?:\/\/|\/)[^) \n]+):(\d+):(\d+)\)?/); return m? (m[1]+':'+m[2]+':'+m[3]) : '' }
   var ORIGINAL={}; for (var i=0;i<INCLUDE.length;i++){ (function(level){
     var orig=console[level]?console[level].bind(console):console.log.bind(console); ORIGINAL[level]=orig;
     console[level]=function(){ var args=[...arguments]; var text=args.map(safeFormat).join(' ');
@@ -76,7 +77,77 @@ export default function BrowserEchoScript(props: BrowserEchoScriptProps): JSX.El
       enqueue({level:level,text:text,time:Date.now(),stack:stack,source:source});
       if(PRESERVE){ try{ orig.apply(console,args) }catch(e){} } }
   })(INCLUDE[i]) }
-  try{ ORIGINAL['info'] && ORIGINAL['info'](TAG+' forwarding console logs to '+ROUTE+' (session '+SESSION+')') }catch(_){}
+  try{ ORIGINAL['info'] && ORIGINAL['info'](TAG+' forwarding console logs to '+ROUTE+' (session '+SESSION+')') }catch(_){ }
+  // Network interception (fetch/XHR)
+  try {
+    if (NETWORK && NETWORK.enabled) {
+      // fetch interception
+      try {
+        var captureFetch = (typeof NETWORK.captureFetch === 'boolean') ? NETWORK.captureFetch : true;
+        if (captureFetch && typeof window.fetch === 'function') {
+          var __origFetch = window.fetch.bind(window);
+          window.fetch = (async function(){
+            var args = Array.prototype.slice.call(arguments);
+            var method = 'GET'; var url = '';
+            try {
+              var input = args[0]; var init = args[1] || {};
+              if (typeof input === 'string') url = input; else if (input && typeof input.url === 'string') url = input.url;
+              if (init && init.method) method = String(init.method).toUpperCase(); else if (input && input.method) method = String(input.method).toUpperCase();
+            } catch {}
+            var started = (typeof performance!=='undefined' && performance.now) ? performance.now() : Date.now();
+            try {
+              var res = await __origFetch.apply(window, args);
+              var finished = (typeof performance!=='undefined' && performance.now) ? performance.now() : Date.now();
+              var data = { kind: 'network', transport: 'fetch', method: method, url: url, status: (res && typeof res.status==='number') ? res.status : 0, ok: !!(res && res.ok), ms: Math.round(finished-started) };
+              enqueue({ level: 'info', text: 'NET '+JSON.stringify(data), time: Date.now(), stack: '', source: url });
+              return res;
+            } catch (err) {
+              var finished2 = (typeof performance!=='undefined' && performance.now) ? performance.now() : Date.now();
+              var data2 = { kind: 'network', transport: 'fetch', method: method, url: url, error: (err && (err.message||String(err))) || 'error', ms: Math.round(finished2-started) };
+              enqueue({ level: 'error', text: 'NET '+JSON.stringify(data2), time: Date.now(), stack: '', source: url });
+              throw err;
+            }
+          });
+        }
+      } catch {}
+      // XHR interception
+      try {
+        var captureXHR = (typeof NETWORK.captureXmlHttpRequest === 'boolean') ? NETWORK.captureXmlHttpRequest : true;
+        if (captureXHR && typeof window.XMLHttpRequest !== 'undefined') {
+          var OrigXHR = window.XMLHttpRequest;
+          function WrappedXHR(){
+            var xhr = new OrigXHR();
+            var method = 'GET'; var url = ''; var start = 0;
+            var origOpen = xhr.open;
+            xhr.open = function(m,u){ try { method = (m||'GET').toUpperCase(); url = u||''; } catch {} return origOpen.apply(xhr, arguments); };
+            var origSend = xhr.send;
+            xhr.send = function(){
+              start = (typeof performance!=='undefined' && performance.now) ? performance.now() : Date.now();
+              try {
+                xhr.addEventListener('loadend', function(){
+                  try {
+                    var end = (typeof performance!=='undefined' && performance.now) ? performance.now() : Date.now();
+                    var status = Number(xhr.status||0); var ok = status>=200 && status<400;
+                    var data = { kind: 'network', transport: 'xhr', method: method, url: url, status: status, ok: ok, ms: Math.round(end-start) };
+                    enqueue({ level: ok ? 'info' : 'error', text: 'NET '+JSON.stringify(data), time: Date.now(), stack: '', source: url });
+                  } catch {}
+                }, { once: true });
+              } catch {}
+              try { return origSend.apply(xhr, arguments); }
+              catch (err) {
+                var end2 = (typeof performance!=='undefined' && performance.now) ? performance.now() : Date.now();
+                var dataE = { kind: 'network', transport: 'xhr', method: method, url: url, error: (err && (err.message||String(err))) || 'error', ms: Math.round(end2-start) };
+                enqueue({ level: 'error', text: 'NET '+JSON.stringify(dataE), time: Date.now(), stack: '', source: url });
+                throw err;
+              }
+            };
+            return xhr;
+          }
+          window.XMLHttpRequest = WrappedXHR;
+        }
+      } catch {}
+    }
+  } catch {}
 })();
   `.trim();
 

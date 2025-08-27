@@ -28,6 +28,31 @@ export default function DevLogDemo() {
     }
   }
 
+  const handleNetworkTest = async () => {
+    console.log('🌐 Testing network requests...')
+
+    try {
+      // Test successful fetch
+      await fetch('https://jsonplaceholder.typicode.com/posts/1')
+      console.log('✅ Successful fetch completed')
+
+      // Test POST request
+      await fetch('https://jsonplaceholder.typicode.com/posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Test', body: 'Test body' })
+      })
+      console.log('✅ POST request completed')
+
+      // Test 404 error
+      await fetch('https://jsonplaceholder.typicode.com/posts/999999')
+      console.log('⚠️ 404 request completed')
+
+    } catch (error) {
+      console.error('🌐 Network test error:', error)
+    }
+  }
+
   return (
     <div className="demo-section">
       <h2>Browser Echo Demo</h2>
@@ -40,6 +65,10 @@ export default function DevLogDemo() {
         
         <button onClick={handleAsyncError}>
           Test Async Error
+        </button>
+        
+        <button onClick={handleNetworkTest}>
+          Test Network Requests
         </button>
         
         <button onClick={() => {

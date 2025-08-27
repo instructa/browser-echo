@@ -38,6 +38,98 @@ export function initBrowserEcho(opts: InitBrowserEchoOptions = {}) {
     ORIGINAL['info']?.(`${tag} forwarding console logs to ${route} (session ${session})`);
   } catch {}
 
+  // Network interception (fetch/XHR)
+  try {
+    const net = opts.network || {};
+    const enableNetwork = typeof net.enabled === 'boolean' ? net.enabled : true;
+    if (enableNetwork) {
+      // Intercept fetch
+      try {
+        const captureFetch = typeof net.captureFetch === 'boolean' ? net.captureFetch : true;
+        if (captureFetch && typeof (w.fetch) === 'function') {
+          const originalFetch = w.fetch.bind(w);
+          w.fetch = (async (...args: any[]) => {
+            let method = 'GET';
+            let url = '';
+            try {
+              const input = args[0];
+              const init = args[1] || {};
+              if (typeof input === 'string') url = input;
+              else if (input && typeof input.url === 'string') url = input.url;
+              if (init && init.method) method = String(init.method).toUpperCase();
+              else if (input && input.method) method = String(input.method).toUpperCase();
+            } catch {}
+            const started = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            try {
+              const res = await originalFetch(...(args as any));
+              const finished = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+              const data = {
+                kind: 'network',
+                transport: 'fetch',
+                method,
+                url,
+                status: (res && typeof res.status === 'number') ? res.status : 0,
+                ok: !!(res && (res as any).ok),
+                ms: Math.round(finished - started)
+              } as const;
+              enqueue({ level: 'info', text: `NET ${JSON.stringify(data)}`, time: Date.now(), stack: '', source: url });
+              return res;
+            } catch (err) {
+              const finished = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+              const data = { kind: 'network', transport: 'fetch', method, url, error: safeFormat(err), ms: Math.round(finished - started) } as const;
+              enqueue({ level: 'error', text: `NET ${JSON.stringify(data)}`, time: Date.now(), stack: '', source: url });
+              throw err;
+            }
+          }) as typeof w.fetch;
+        }
+      } catch {}
+
+      // Intercept XMLHttpRequest
+      try {
+        const captureXHR = typeof net.captureXmlHttpRequest === 'boolean' ? net.captureXmlHttpRequest : true;
+        if (captureXHR && typeof (w.XMLHttpRequest) !== 'undefined') {
+          const OrigXHR = w.XMLHttpRequest as any;
+          function WrappedXHR(this: any) {
+            const xhr = new OrigXHR();
+            let method = 'GET';
+            let url = '';
+            let start = 0;
+            const origOpen = xhr.open;
+            xhr.open = function(m: string, u: string, ...rest: any[]) {
+              try { method = (m || 'GET').toUpperCase(); url = u || ''; } catch {}
+              return origOpen.call(xhr, m, u, ...rest);
+            };
+            const origSend = xhr.send;
+            xhr.send = function(...sendArgs: any[]) {
+              start = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+              try {
+                // loadend fires for success and error
+                xhr.addEventListener('loadend', function() {
+                  try {
+                    const end = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+                    const status = Number(xhr.status || 0);
+                    const ok = status >= 200 && status < 400;
+                    const data = { kind: 'network', transport: 'xhr', method, url, status, ok, ms: Math.round(end - start) } as const;
+                    enqueue({ level: ok ? 'info' : 'error', text: `NET ${JSON.stringify(data)}`, time: Date.now(), stack: '', source: url });
+                  } catch {}
+                }, { once: true });
+              } catch {}
+              try { return origSend.apply(xhr, sendArgs as any); }
+              catch (err) {
+                const end = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+                const data = { kind: 'network', transport: 'xhr', method, url, error: safeFormat(err), ms: Math.round(end - start) } as const;
+                enqueue({ level: 'error', text: `NET ${JSON.stringify(data)}`, time: Date.now(), stack: '', source: url });
+                throw err;
+              }
+            };
+            return xhr;
+          }
+          (w as any).XMLHttpRequest = WrappedXHR;
+        }
+      } catch {}
+    }
+  } catch {}
+
   function enqueue(entry: any) {
     queue.push(entry);
     if (queue.length >= batchSize) flush();

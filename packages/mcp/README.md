@@ -10,7 +10,8 @@ Ask your AI assistant questions like:
 
 - **"Check frontend logs"** — Get recent console logs from your browser
 - **"Show only errors from the last 2 minutes"** — Filter by level and time  
-- **"Find hydration mismatch warnings"** — Search for specific issues
+- **"Show network requests from the last 5 minutes"** — View recent API calls and their status
+- **"Find failed API calls"** — Identify network errors and failed requests
 - **"Clear logs and start fresh"** — Reset the buffer for new captures
 
 Your AI assistant will automatically use the appropriate MCP tools to fetch and analyze the logs without you needing to copy/paste from terminals.
@@ -22,8 +23,6 @@ Your AI assistant will automatically use the appropriate MCP tools to fetch and 
 **⚠️ PREREQUISITE:** Before setting up the MCP server, you **must first install and configure a Browser Echo framework package** (Vite, Next.js, Nuxt, etc.) in your project. The MCP server needs your framework to forward browser logs to it.
 
 **📖 [Choose your framework and complete setup first](../README.md#quick-start)**
-
-> **💡 Configuration Tip:** Set `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` in your framework environment to explicitly configure MCP forwarding. See [Environment Variables](#environment-variables) for full configuration options.
 
 Once your framework is set up and forwarding logs, install the Browser Echo MCP server with your client. Using stdio transport.
 
@@ -129,6 +128,9 @@ Follow Windsurf MCP [documentation](https://docs.windsurf.com/windsurf/cascade/m
 </details>
 
 
+> **💡 Configuration Tip:** Set `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179` in your framework environment to explicitly configure MCP forwarding. Frameworks automatically forward logs to the `/__client-logs` ingest endpoint. See [Environment Variables](#environment-variables) for full configuration options.
+
+
 ### Streamable HTTP Setup (Server usage)
 
 If you prefer HTTP transport (useful for web-based AI tools):
@@ -228,6 +230,47 @@ clear_logs({ session: 'abc12345', scope: 'soft' })
 - `session?: string` — 8-character session ID prefix (optional)
 - `scope?: 'soft' | 'hard'` — `'soft'` sets baseline, `'hard'` deletes entries (default: `'hard'`)
 
+### `get_network_logs` — Fetch Network Activity Logs
+
+Retrieves captured network requests (fetch/XMLHttpRequest) from the browser.
+
+```typescript
+// Get all network requests
+get_network_logs()
+
+// Filter by HTTP methods
+get_network_logs({ method: ['GET', 'POST'] })
+
+// Filter by status code range
+get_network_logs({ statusMin: 400, statusMax: 599 })
+
+// Search for specific URLs
+get_network_logs({ urlContains: '/api' })
+
+// Only show errors
+get_network_logs({ errorsOnly: true })
+
+// Combine filters
+get_network_logs({ 
+  project: 'my-app',
+  method: ['POST'],
+  statusMin: 400,
+  limit: 20
+})
+```
+
+**Parameters:**
+- `project?: string` — Filter by project name
+- `method?: string[]` — HTTP methods (GET, POST, PUT, DELETE, etc.)
+- `statusMin?: number`, `statusMax?: number` — HTTP status code range
+- `urlContains?: string` — Substring match on request URL
+- `errorsOnly?: boolean` — Only failed/error requests (default: `false`)
+- `session?: string` — 8-character session ID prefix
+- `limit?: number` — Maximum entries to return (default: `1000`, max: `5000`)
+- `sinceMs?: number` — Only requests with timestamp >= sinceMs
+
+**Returns:** Formatted text with format: `[net] [session] METHOD /path STATUS_CODE TIME_MS @ timestamp`
+
 ---
 
 ## Available Resources
@@ -293,27 +336,6 @@ Best for local development with AI assistants:
 
 ---
 
-## Available Tools
-
-### `get_logs` — Fetch Frontend Browser Logs
-
-Key params (selection):
-- `project?: string` — filter by project name
-- `level?: string[]`, `sinceMs?: number`, `contains?: string`
-- `session?: string`, `includeStack?: boolean`, `limit?: number`
-- `autoBaseline?: boolean` (default true)
-- `stackedMode?: boolean` (default false) — disables auto-baseline
-
-Adaptive output:
-- If multiple projects are active and no `project` specified, returns grouped previews per project with counts and a tip to filter.
-
-### `clear_logs` — Clear Frontend Browser Logs
-
-- Supports `project?: string` to clear only that project’s logs.
-- `scope: 'soft' | 'hard'` for baselining vs deletion.
-
----
-
 ## Programmatic API
 
 ```ts
@@ -335,7 +357,7 @@ publishLogEntry({
 
 ## Environment Variables
 
-- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Frameworks forward logs here
+- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179` — Base URL for MCP server (frameworks auto-append `/__client-logs`)
 - `BROWSER_ECHO_PROJECT_NAME` — Label logs by project
 - `BROWSER_ECHO_BUFFER_SIZE=1000` — Ring buffer size
 

@@ -19,6 +19,31 @@ export function DevLogDemo() {
     console.error(new Error('Boom from TanStack!'))
   }, [])
 
+  const testNetworkRequests = React.useCallback(async () => {
+    console.log('🌐 Testing network requests...')
+
+    try {
+      // Test successful fetch
+      await fetch('https://jsonplaceholder.typicode.com/posts/1')
+      console.log('✅ Successful fetch completed')
+
+      // Test POST request
+      await fetch('https://jsonplaceholder.typicode.com/posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Test', body: 'Test body' })
+      })
+      console.log('✅ POST request completed')
+
+      // Test 404 error
+      await fetch('https://jsonplaceholder.typicode.com/posts/999999')
+      console.log('⚠️ 404 request completed')
+
+    } catch (error) {
+      console.error('🌐 Network test error:', error)
+    }
+  }, [])
+
   React.useEffect(() => {
     emitAll()
     emitError()
@@ -37,6 +62,12 @@ export function DevLogDemo() {
         style={{ padding: '6px 10px', border: '1px solid #999', borderRadius: 6 }}
       >
         Emit Error
+      </button>
+      <button
+        onClick={testNetworkRequests}
+        style={{ padding: '6px 10px', border: '1px solid #999', borderRadius: 6 }}
+      >
+        Test Network Requests
       </button>
     </div>
   )
