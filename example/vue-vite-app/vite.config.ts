@@ -6,9 +6,7 @@ import browserEcho from '@browser-echo/vite'
 export default defineConfig({
   plugins: [vue(), browserEcho(
     {
-      stackMode: 'condensed',
-      network: { enabled: true },
-      mcp: { url: 'http://127.0.0.1:5179', suppressTerminal: true }
+      stackMode: 'condensed'
     },
   )],
 })

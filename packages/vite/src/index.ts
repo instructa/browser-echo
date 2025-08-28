@@ -1,8 +1,10 @@
 // Avoid exporting Vite types to prevent cross-version type mismatches in consumers
 import ansis from 'ansis';
-import type { BrowserLogLevel, NetworkCaptureOptions } from '@browser-echo/core';
+import type { BrowserLogLevel, NetworkCaptureOptions } from 
+'@browser-echo/core';
 import { mkdirSync, appendFileSync } from 'node:fs';
 import { join as joinPath, dirname } from 'node:path';
+import { webcrypto as nodeWebcrypto } from 'node:crypto';
 
 export interface BrowserLogsToTerminalOptions {
   enabled?: boolean;
@@ -41,11 +43,12 @@ const DEFAULTS: ResolvedOptions = {
   batch: { size: 20, interval: 300 },
   truncate: 10_000,
   fileLog: { enabled: false, dir: 'logs/frontend' },
-  mcp: { url: '', routeLogs: '/__client-logs', suppressTerminal: true, headers: {}, suppressProvided: false },
+  mcp: { url: '', routeLogs: '/__client-logs', suppressTerminal: false, headers: {}, suppressProvided: false },
   network: { enabled: true }
 };
 
 export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): any {
+  console.log('[BROWSER-ECHO] Plugin initializing with options:', opts);
   const options: ResolvedOptions = {
     ...DEFAULTS,
     ...opts,
@@ -59,6 +62,7 @@ export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): an
       suppressProvided: typeof opts.mcp?.suppressTerminal === 'boolean'
     }
   };
+  console.log('[BROWSER-ECHO] Resolved options:', { enabled: options.enabled, route: options.route, mcp: options.mcp });
   const VIRTUAL_ID = '\0virtual:browser-echo';
   const PUBLIC_ID = 'virtual:browser-echo';
 
@@ -80,6 +84,7 @@ export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): an
       return { html, tags: [{ tag: 'script', attrs: { type: 'module', src: `/@id/${PUBLIC_ID}` }, injectTo: 'head' }] };
     },
     configureServer(server: any) {
+      console.log('[BROWSER-ECHO] configureServer called, enabled:', options.enabled);
       if (!options.enabled) return;
       attachMiddleware(server, options);
     }
@@ -95,6 +100,22 @@ function normalizeMcpBaseUrl(input: string | undefined): string {
   return noSlash.replace(/\/mcp$/i, '');
 }
 
+// Generate or retrieve a stable per-dev-server id (persisted in-memory)
+let __viteDevInstanceId: string | null = null;
+function getOrCreateDevId(): string {
+  if (__viteDevInstanceId) return __viteDevInstanceId;
+  try {
+    const wc: Crypto | undefined = (globalThis as any).crypto || (nodeWebcrypto as unknown as Crypto);
+    const a = new Uint8Array(8);
+    // @ts-ignore
+    wc?.getRandomValues?.(a);
+    __viteDevInstanceId = Array.from(a).map((b) => b.toString(16).padStart(2,'0')).join('');
+  } catch {
+    __viteDevInstanceId = String(Math.random()).slice(2, 10);
+  }
+  return __viteDevInstanceId;
+}
+
 function attachMiddleware(server: any, options: ResolvedOptions) {
   const sessionStamp = new Date().toISOString().replace(/[:.]/g, '-');
   const logFilePath = joinPath(options.fileLog.dir, `dev-${sessionStamp}.log`);
@@ -105,6 +126,7 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
   let resolvedIngest = '';
   let isRemoteAvailable = false; // reflects current availability of the configured/current MCP ingest
   let lastAnnouncement = '';
+  let discoverySource: 'plugin' | 'env' | 'fixed-port' = 'fixed-port';
 
   const announce = (msg: string) => {
     if (msg && msg !== lastAnnouncement) {
@@ -114,121 +136,111 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
   };
 
   function computeBaseOnce() {
-    // 1) Explicit URL provided via options or env has highest priority
-    const explicit = String(options.mcp.url || process.env.BROWSER_ECHO_MCP_URL || '').trim();
-    if (explicit) {
-      const base = explicit.replace(/\/$/, '').replace(/\/mcp$/i, '');
+    // 1) Plugin option takes precedence
+    if (options.mcp.url) {
+      const base = String(options.mcp.url).trim().replace(/\/$/, '').replace(/\/mcp$/i, '');
       resolvedBase = base;
       resolvedIngest = `${base}${options.mcp.routeLogs}`;
+      discoverySource = 'plugin';
       return;
     }
-
-    // No configured MCP → keep base empty; do not suppress; optional safe auto-detect happens in probe loop
-    resolvedBase = '';
-    resolvedIngest = '';
+    // 2) Environment override
+    const envUrl = String(process.env.BROWSER_ECHO_MCP_URL || '').trim();
+    if (envUrl) {
+      const base = envUrl.replace(/\/$/, '').replace(/\/mcp$/i, '');
+      resolvedBase = base;
+      resolvedIngest = `${base}${options.mcp.routeLogs}`;
+      discoverySource = 'env';
+      return;
+    }
+    // 3) Fixed port default
+    const candidate = 'http://127.0.0.1:5179';
+    resolvedBase = candidate;
+    resolvedIngest = `${candidate}${options.mcp.routeLogs}`;
+    discoverySource = 'fixed-port';
   }
 
   computeBaseOnce();
-  // If we have a configured/discovered MCP, assume available initially so terminal is suppressed.
-  // We'll flip to unavailable on probe/forward failure and resume terminal printing.
-  isRemoteAvailable = !!resolvedBase;
+  // Start with unavailable; only mark available after first successful ACK
+  isRemoteAvailable = false;
 
-  // Start a small background probe to detect MCP availability transitions (only when a base is known)
-  startHealthProbe();
-
-  async function probeHealth(): Promise<boolean> {
-    try {
-      if (!resolvedBase) return false;
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 400);
-      const res = await fetch(`${resolvedBase}/health`, { signal: ctrl.signal as any, cache: 'no-store' as any });
-      clearTimeout(t);
-      return !!res && res.ok;
-    } catch {
-      return false;
-    }
-  }
-
-  async function probeIngestCandidate(base: string, ingestRoute: `/${string}`): Promise<boolean> {
-    // Validate ingest-only servers by probing the ingest route directly
-    const url = `${base}${ingestRoute}`;
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 400);
-      const res = await fetch(url, { method: 'GET', signal: ctrl.signal as any, cache: 'no-store' as any });
-      clearTimeout(t);
-      if (res && (res.status === 200 || res.status === 204)) return true;
-    } catch {}
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 400);
-      const res = await fetch(url, { method: 'OPTIONS', signal: ctrl.signal as any, cache: 'no-store' as any });
-      clearTimeout(t);
-      if (res && (res.status === 200 || res.status === 204)) return true;
-    } catch {}
-    return false;
-  }
-
-  function startHealthProbe() {
-    // Only starts once per dev server process
-    let started = false;
-    if (started) return;
-    started = true;
-    const interval = setInterval(async () => {
-      // If no explicit config and nothing resolved yet, try safe auto-detect in dev (skip during tests)
-      const hasExplicitConfig = !!(options.mcp.url || process.env.BROWSER_ECHO_MCP_URL);
-      if (!hasExplicitConfig && !resolvedBase && process.env.NODE_ENV !== 'test') {
-        const candidate = 'http://127.0.0.1:5179';
-        // First check health
-        let healthy = false;
-        try {
-          const ctrl = new AbortController();
-          const t = setTimeout(() => ctrl.abort(), 400);
-          const res = await fetch(`${candidate}/health`, { signal: ctrl.signal as any, cache: 'no-store' as any });
-          clearTimeout(t);
-          healthy = !!res && res.ok;
-        } catch {}
-        if (healthy) {
-          const okIngest = await probeIngestCandidate(candidate, options.mcp.routeLogs);
-          if (okIngest) {
-            resolvedBase = candidate;
-            resolvedIngest = `${candidate}${options.mcp.routeLogs}`;
-            isRemoteAvailable = true; // but we will not suppress unless explicit config is present
-            announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
-          }
-        }
-      }
-
-      if (!resolvedBase) return; // nothing to probe without a known/current MCP
-      const ok = await probeHealth();
-      if (ok && !isRemoteAvailable) {
-        isRemoteAvailable = true;
-        announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
-      } else if (!ok && isRemoteAvailable) {
-        // MCP became unavailable → resume terminal printing
-        isRemoteAvailable = false;
-        announce(`${options.tag} MCP ingest unavailable; printing logs locally`);
-      }
-    }, 1500);
-    // NOTE: we intentionally do not clear the interval.
-  }
+  // Remove background health probe: availability is determined solely by forward + ACK
 
   server.middlewares.use(options.route, (req: import('http').IncomingMessage, res: import('http').ServerResponse, next: Function) => {
     if (req.method !== 'POST') return next();
+    
+    const debugEnabled = String(process.env.BROWSER_ECHO_DEBUG || '').trim() !== '' && String(process.env.BROWSER_ECHO_DEBUG).toLowerCase() !== '0' && String(process.env.BROWSER_ECHO_DEBUG).toLowerCase() !== 'false';
+    
+    if (debugEnabled) {
+      console.log('[BROWSER-ECHO MIDDLEWARE] Received POST request to', options.route);
+    }
+    
     collectBody(req).then(async (raw) => {
-      let payload: ClientPayload | null = null;
-      try { payload = JSON.parse(raw.toString('utf-8')); }
-      catch { res.statusCode = 400; res.end('invalid JSON'); return; }
-
-      if (!payload || !Array.isArray(payload.entries)) { res.statusCode = 400; res.end('invalid payload'); return; }
-
-      // Mirror to MCP server (fire-and-forget) and update connection state
-      const targetIngest = resolvedIngest;
       try {
-        if (targetIngest) {
+        if (debugEnabled) {
+          console.log('[BROWSER-ECHO MIDDLEWARE] Raw body length:', raw.length);
+        }
+        
+        let payload: ClientPayload | null = null;
+        try { 
+          payload = JSON.parse(raw.toString('utf-8')); 
+          if (debugEnabled) {
+            console.log('[BROWSER-ECHO MIDDLEWARE] Parsed payload successfully');
+          }
+        }
+        catch (e) { 
+          if (debugEnabled) {
+            console.error('[BROWSER-ECHO MIDDLEWARE] JSON parse error:', e);
+          }
+          res.statusCode = 400; 
+          res.end('invalid JSON'); 
+          return; 
+        }
+
+        if (!payload || !Array.isArray(payload.entries)) { 
+          if (debugEnabled) {
+            console.error('[BROWSER-ECHO MIDDLEWARE] Invalid payload structure');
+          }
+          res.statusCode = 400; 
+          res.end('invalid payload'); 
+          return; 
+        }
+
+        const logger = server.config.logger;
+        let debugPrinted = false as any;
+        
+        // Terminal printing policy:
+        // - Default: ALWAYS print locally
+        // - If BROWSER_ECHO_SUPPRESS_TERMINAL=1|true, suppress when remote ingest is confirmed available
+        // - If BROWSER_ECHO_SUPPRESS_TERMINAL=0|false, force printing regardless of remote availability
+        const envSup = String(process.env.BROWSER_ECHO_SUPPRESS_TERMINAL ?? '').trim().toLowerCase();
+        const envForceSuppress = envSup === '1' || envSup === 'true';
+        const envForcePrint = envSup === '0' || envSup === 'false';
+
+        let shouldPrint = true;
+        if (envForcePrint) {
+          shouldPrint = true;
+        } else if (envForceSuppress) {
+          // Suppress only when we have a confirmed remote ingest connection
+          shouldPrint = !isRemoteAvailable;
+        }
+        
+        if (debugEnabled) {
+          console.log(`[BROWSER-ECHO MIDDLEWARE] Processing ${payload.entries.length} entries, shouldPrint=${shouldPrint}, isRemoteAvailable=${isRemoteAvailable}, envForceSuppress=${envForceSuppress}, envForcePrint=${envForcePrint}`);
+        }
+      
+
+
+      // Mirror to MCP server and update suppression state based on result
+      const targetIngest = resolvedIngest;
+      if (targetIngest && !envForcePrint) {
+      try {
           const projectName = (process.env.BROWSER_ECHO_PROJECT_NAME || (process.env.npm_package_name || '')).trim();
           const extraHeaders: Record<string,string> = {};
           if (projectName) extraHeaders['X-Browser-Echo-Project-Name'] = projectName;
+          // Stable per-dev-server id
+          const devId = getOrCreateDevId();
+          extraHeaders['X-Browser-Echo-Dev-Id'] = devId;
           const ctrl = new AbortController();
           const timeout = setTimeout(() => ctrl.abort(), 500);
           fetch(targetIngest, {
@@ -241,12 +253,31 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
           }).then((res) => {
             clearTimeout(timeout);
             const ok = !!res && res.ok;
-            if (ok && !isRemoteAvailable) {
+            // Validate ACK to ensure this forward corresponds to our project and dev server
+            let ackOk = false;
+            let isOwner = false;
+            try {
+              const ack = res.headers?.get?.('X-Browser-Echo-Ack') || '';
+              if (ack) {
+                const mProject = /project=([^;]*)/i.exec(ack);
+                const mDev = /devId=([^;]*)/i.exec(ack);
+                const mOwner = /owner=([^;]*)/i.exec(ack);
+                const aProject = mProject ? decodeURIComponent(mProject[1]) : '';
+                const aDev = mDev ? decodeURIComponent(mDev[1]) : '';
+                isOwner = (mOwner ? String(mOwner[1]) : '') === '1';
+                ackOk = (!projectName || aProject === projectName) && aDev === devId && isOwner;
+              }
+            } catch {}
+            if (ok && ackOk) {
+              if (!isRemoteAvailable) {
               isRemoteAvailable = true;
               announce(`${options.tag} forwarding logs to MCP ingest at ${targetIngest}`);
-            } else if (!ok && isRemoteAvailable) {
+              }
+            } else {
+              if (isRemoteAvailable) {
               isRemoteAvailable = false;
               announce(`${options.tag} MCP ingest unavailable; printing logs locally`);
+              }
             }
           }).catch(() => {
             try { clearTimeout(timeout); } catch {}
@@ -255,14 +286,15 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
               announce(`${options.tag} MCP ingest unavailable; printing logs locally`);
             }
           });
+        } catch {}
         }
-      } catch {}
 
-      const logger = server.config.logger;
-      const hasExplicitConfig = !!(options.mcp.url || process.env.BROWSER_ECHO_MCP_URL);
-      // Suppress only when explicitly configured AND MCP considered available
-      const shouldSuppress = hasExplicitConfig && options.mcp.suppressTerminal && isRemoteAvailable;
-      const shouldPrint = !shouldSuppress;
+      if (debugEnabled && !debugPrinted) {
+        debugPrinted = true;
+        try {
+          logger.info(`${options.tag} debug: cwd=${process.cwd()} source=${discoverySource} url=${resolvedBase} route=${options.mcp.routeLogs} suppress=${String(!shouldPrint)} available=${String(isRemoteAvailable)}`);
+      } catch {}
+      }
       const sid = (payload.sessionId ?? 'anon').slice(0, 8);
       for (const entry of payload.entries) {
         const level = normalizeLevel(entry.level);
@@ -272,6 +304,9 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
         let line = `${options.tag} [${sid}] ${level.toUpperCase()}: ${truncated}`;
         if (options.showSource && entry.source) line += ` (${entry.source})`;
         const colored = options.colors ? colorize(level, line) : line;
+        if (debugEnabled) {
+          console.log(`[BROWSER-ECHO MIDDLEWARE] [PRINT] shouldPrint=${shouldPrint}, line="${line}"`);
+        }
         if (shouldPrint) print(logger, level, colored);
 
         if (entry.stack && options.stackMode !== 'none' && shouldPrint) {
@@ -289,7 +324,17 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
         }
       }
       res.statusCode = 204; res.end();
+      } catch (middlewareError) {
+        if (debugEnabled) {
+          console.error('[BROWSER-ECHO MIDDLEWARE] Caught error in middleware:', middlewareError);
+        }
+        server.config.logger.error(`${options.tag} middleware error: ${middlewareError?.message || middlewareError}`);
+        res.statusCode = 500; res.end('error');
+      }
     }).catch((err) => {
+      if (debugEnabled) {
+        console.error('[BROWSER-ECHO MIDDLEWARE] collectBody error:', err);
+      }
       server.config.logger.error(`${options.tag} middleware error: ${err?.message || err}`);
       res.statusCode = 500; res.end('error');
     });
@@ -452,6 +497,20 @@ if (typeof window !== 'undefined' && !window[__INSTALLED_KEY]) {
       } catch {}
     }
   } catch {}
+}
+
+// Generate or retrieve a stable per-dev-server id (persisted in-memory)
+let __viteDevInstanceId: string | null = null;
+function getOrCreateDevId(): string {
+  if (__viteDevInstanceId) return __viteDevInstanceId;
+  try {
+    const a = new Uint8Array(8);
+    (globalThis.crypto || require('node:crypto').webcrypto).getRandomValues(a);
+    __viteDevInstanceId = Array.from(a).map((b) => b.toString(16).padStart(2,'0')).join('');
+  } catch {
+    __viteDevInstanceId = String(Math.random()).slice(2, 10);
+  }
+  return __viteDevInstanceId;
 }
 `;
 }

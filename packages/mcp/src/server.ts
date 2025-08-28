@@ -47,6 +47,39 @@ export async function startServer(
   server: McpServer,
   options: StartOptions,
 ): Promise<void> {
+  // Debug context: where and how this MCP server is started
+  const __debugEnabled = (() => {
+    try {
+      const v = String(process.env.BROWSER_ECHO_DEBUG ?? '').trim().toLowerCase();
+      return v !== '' && v !== '0' && v !== 'false';
+    } catch { return false; }
+  })();
+
+  if (__debugEnabled) {
+    try {
+      const envSnapshot: Record<string, string> = {};
+      for (const k of Object.keys(process.env)) {
+        if (k.startsWith('BROWSER_ECHO_') || k === 'NODE_ENV') {
+          const val = process.env[k];
+          envSnapshot[k] = typeof val === 'string' ? val : '';
+        }
+      }
+      const transport = options.type;
+      const host = transport === 'http' ? options.host : (options.host || '127.0.0.1');
+      const port = transport === 'http'
+        ? (options as any).port
+        : (() => {
+            const envIngest = process.env.BROWSER_ECHO_INGEST_PORT;
+            const preferred = ((options as any).port ?? (envIngest ? (Number(envIngest) | 0) : 5179)) | 0;
+            return preferred > 0 ? preferred : 5179;
+          })();
+      const route = transport === 'http' ? (options as any).logsRoute : ((options as any).logsRoute || '/__client-logs');
+      // eslint-disable-next-line no-console
+      console.error(`[MCP debug] pid=${process.pid} cwd=${process.cwd()} transport=${transport} host=${host} port=${port} route=${route}`);
+      // eslint-disable-next-line no-console
+      console.error(`[MCP debug] env: ${JSON.stringify(envSnapshot)}`);
+    } catch {}
+  }
   // Create store
   const bufferMax = Number(process.env.BROWSER_ECHO_BUFFER_SIZE ?? 1000) | 0;
   const store = new LogStore(bufferMax > 0 ? bufferMax : 1000);
@@ -273,19 +306,10 @@ export async function startHttpServer(
     throw err;
   }
 
-  // For Streamable HTTP, we intentionally do not write project JSON here. The per-project
-  // source of truth is written by the stdio ingest server only.
-
   // eslint-disable-next-line no-console
   console.log(`MCP (Streamable HTTP) listening → http://${opts.host}:${opts.port}${opts.endpoint}`);
   // eslint-disable-next-line no-console
   console.log(`Log ingest endpoint        → http://${opts.host}:${opts.port}${opts.logsRoute}`);
-  // Expose ingest discovery for other MCP instances in the same process tree
-  try {
-    process.env.BROWSER_ECHO_INGEST_BASE = `http://${opts.host}:${opts.port}`;
-    process.env.BROWSER_ECHO_LOGS_ROUTE = String(opts.logsRoute);
-    process.env.BROWSER_ECHO_INGEST_OWNER = '1';
-  } catch {}
 }
 
 /** Start a minimal HTTP server exposing ONLY:
@@ -390,18 +414,6 @@ export async function startIngestOnlyServer(
 
   // eslint-disable-next-line no-console
   console.error(`Log ingest endpoint        → http://${opts.host}:${actualPort}${opts.logsRoute}`);
-  // Write project-local discovery file for frameworks/tools to find ingest
-  try {
-    const discPath = join(process.cwd(), '.browser-echo-mcp.json');
-    const payload = { url: `http://${opts.host}:${actualPort}`, route: String(opts.logsRoute), timestamp: Date.now() };
-    writeFileSync(discPath, JSON.stringify(payload));
-  } catch {}
-  // Expose discovery for owner instance
-  try {
-    process.env.BROWSER_ECHO_INGEST_BASE = `http://${opts.host}:${actualPort}`;
-    process.env.BROWSER_ECHO_LOGS_ROUTE = String(opts.logsRoute);
-    process.env.BROWSER_ECHO_INGEST_OWNER = '1';
-  } catch {}
 }
 
 // Removed project JSON discovery in single-server mode
@@ -424,6 +436,15 @@ function createLogIngestRoutes(store: LogStore, logsRoute: `/${string}`) {
   // Log ingest (POST)
   router.post(logsRoute, defineEventHandler(async (event) => {
     try {
+      const __dbg = String(process.env.BROWSER_ECHO_DEBUG || '').trim().toLowerCase();
+      const __debug = __dbg !== '' && __dbg !== '0' && __dbg !== 'false';
+      if (__debug) {
+        try {
+          const hdrs = event.node.req.headers || {} as any;
+          // eslint-disable-next-line no-console
+          console.error('[MCP ingest debug] headers:', JSON.stringify(hdrs));
+        } catch {}
+      }
       const raw = await readRawBody(event);
       const payload = typeof raw === 'string' ? JSON.parse(raw) : (raw ? JSON.parse(Buffer.from(raw as any).toString('utf-8')) : undefined);
       if (!payload || !Array.isArray(payload.entries)) {
@@ -435,10 +456,20 @@ function createLogIngestRoutes(store: LogStore, logsRoute: `/${string}`) {
       const hdrs = event.node.req.headers;
       const projectHeader = (hdrs['x-browser-echo-project-name'] || hdrs['x-project-name'] || hdrs['x-project'] || '') as string | string[] | undefined;
       const projectName = Array.isArray(projectHeader) ? String(projectHeader[0] || '') : String(projectHeader || '');
+      // Extract dev id for ACK handshake
+      const devIdHeader = (hdrs['x-browser-echo-dev-id'] || hdrs['x-dev-id'] || '') as string | string[] | undefined;
+      const devId = Array.isArray(devIdHeader) ? String(devIdHeader[0] || '') : String(devIdHeader || '');
+      if (__debug) {
+        try {
+          // eslint-disable-next-line no-console
+          console.error(`[MCP ingest debug] session=${sid} project=${projectName} devId=${devId} entries=${payload.entries.length}`);
+        } catch {}
+      }
       // Special command: remote clear request
       const isClear = payload.entries.length === 1 && String(payload.entries[0]?.text || '') === '__BROWSER_ECHO_CLEAR__';
       if (isClear) {
         store.clear({ session: sid ? String(sid).slice(0,8) : undefined, scope: 'hard', project: projectName || undefined });
+        try { event.node.res.setHeader('X-Browser-Echo-Ack', `project=${projectName || ''};devId=${devId || ''}`); } catch {}
         setResponseStatus(event, 204);
         return '';
       }
@@ -455,6 +486,10 @@ function createLogIngestRoutes(store: LogStore, logsRoute: `/${string}`) {
           project: projectName ? projectName : undefined
         });
       }
+      // Mark this instance as the ingest owner so clients can distinguish our server from stray ones
+      try { event.node.res.setHeader('X-Browser-Echo-Ack', `project=${projectName || ''};devId=${devId || ''};owner=1`); } catch {}
+      // Mark this instance as the ingest owner so clients can distinguish our server from stray ones
+      try { event.node.res.setHeader('X-Browser-Echo-Ack', `project=${projectName || ''};devId=${devId || ''};owner=1`); } catch {}
       setResponseStatus(event, 204);
       return '';
     } catch {

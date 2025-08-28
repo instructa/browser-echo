@@ -1,12 +1,39 @@
 import { defineEventHandler, readBody, setResponseStatus } from 'h3';
+import { } from 'node:fs';
+import { } from 'node:path';
 
-const MCP_BASE = (process.env.BROWSER_ECHO_MCP_URL || 'http://127.0.0.1:5179').replace(/\/$/, '').replace(/\/mcp$/i, '');
 let __probeStarted = false;
+let __resolvedBase = '';
+let __resolvedIngest = '';
+let __isRemoteAvailable = false;
+let __discoverySource: 'env' | 'fixed-port' = 'fixed-port';
+
+function __normalizeBase(u: string): string { return String(u).trim().replace(/\/$/, '').replace(/\/mcp$/i, ''); }
+function __computeDiscoveryOnce() {
+  // 1) Explicit MCP URL via env
+  const explicit = String(process.env.BROWSER_ECHO_MCP_URL || '').trim();
+  if (explicit) {
+    __resolvedBase = __normalizeBase(explicit);
+    __resolvedIngest = `${__resolvedBase}/__client-logs`;
+    __discoverySource = 'env';
+    return;
+  }
+  // 2) Fixed port default
+  const candidate = 'http://127.0.0.1:5179';
+  __resolvedBase = candidate;
+  __resolvedIngest = `${candidate}/__client-logs`;
+  __discoverySource = 'fixed-port';
+}
+
+__computeDiscoveryOnce();
+__isRemoteAvailable = !!__resolvedBase;
+
 async function __probeHealthOnce(): Promise<boolean> {
   try {
+    if (!__resolvedBase) return false;
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 400);
-    const res = await fetch(`${MCP_BASE}/health`, { signal: ctrl.signal as any, cache: 'no-store' as any });
+    const res = await fetch(`${__resolvedBase}/health`, { signal: ctrl.signal as any, cache: 'no-store' as any });
     clearTimeout(t);
     return !!res && res.ok;
   } catch { return false; }
@@ -15,16 +42,12 @@ function __startHealthProbe() {
   if (__probeStarted) return;
   __probeStarted = true;
   setInterval(async () => {
-    if (__hasForwardedOnce) return;
+    if (!__resolvedBase) return;
     const ok = await __probeHealthOnce();
-    if (ok) __hasForwardedOnce = true;
+    if (ok) __isRemoteAvailable = true; else __isRemoteAvailable = false;
   }, 1500);
 }
 __startHealthProbe();
-
-// Simplified: fixed single-server URL or env override
-
-// Simplified: resolve MCP from project-local JSON once; no fallback
 
 type Level = 'log' | 'info' | 'warn' | 'error' | 'debug';
 type Entry = { level: Level | string; text: string; time?: number; stack?: string; source?: string; };
@@ -41,7 +64,7 @@ export default defineEventHandler(async (event) => {
     setResponseStatus(event, 400); return 'invalid payload';
   }
 
-  const baseUrl = MCP_BASE;
+  const baseUrl = __resolvedBase;
   const mcp = { url: baseUrl, routeLogs: '/__client-logs' } as const;
 
   // Forward to MCP server (fire-and-forget) and update connection state
@@ -50,6 +73,9 @@ export default defineEventHandler(async (event) => {
     const headers: Record<string,string> = { 'content-type': 'application/json' };
     const projectName = (process.env.BROWSER_ECHO_PROJECT_NAME || (process.env.npm_package_name || '')).trim();
     if (projectName) headers['X-Browser-Echo-Project-Name'] = projectName;
+    // Stable per-dev-server id (nuxt dev instance)
+    const devId = getOrCreateDevId();
+    headers['X-Browser-Echo-Dev-Id'] = devId;
     const ctrl = new AbortController();
     const timeout = setTimeout(() => ctrl.abort(), 500);
     fetch(`${mcp.url}${route}`, {
@@ -59,11 +85,33 @@ export default defineEventHandler(async (event) => {
       keepalive: true,
       cache: 'no-store',
       signal: ctrl.signal as any,
-    }).then((res) => { try { clearTimeout(timeout); } catch {} if (res && res.ok) __hasForwardedOnce = true; }).catch(() => { try { clearTimeout(timeout); } catch {} });
+    }).then((res) => {
+      try { clearTimeout(timeout); } catch {}
+      const ok = !!res && res.ok;
+      let ackOk = false;
+      try {
+        const ack = (res as any).headers?.get?.('X-Browser-Echo-Ack') || '';
+        if (ack) {
+          const mProject = /project=([^;]*)/i.exec(ack);
+          const mDev = /devId=([^;]*)/i.exec(ack);
+          const mOwner = /owner=([^;]*)/i.exec(ack);
+          const aProject = mProject ? decodeURIComponent(mProject[1]) : '';
+          const aDev = mDev ? decodeURIComponent(mDev[1]) : '';
+          const isOwner = (mOwner ? String(mOwner[1]) : '') === '1';
+          ackOk = (!projectName || aProject === projectName) && aDev === devId && isOwner;
+        }
+      } catch {}
+      if (ok && ackOk) { __hasForwardedOnce = true; __isRemoteAvailable = true; }
+      else { __isRemoteAvailable = false; }
+    }).catch(() => { try { clearTimeout(timeout); } catch {} __isRemoteAvailable = false; });
   } catch {}
 
-  // Print locally until first confirmed forward
-  const shouldPrint = !__hasForwardedOnce;
+  // Suppress when MCP is available unless explicitly disabled via env
+  const envSup = String(process.env.BROWSER_ECHO_SUPPRESS_TERMINAL ?? '').trim().toLowerCase();
+  const envForce = envSup === '1' || envSup === 'true';
+  const envDisable = envSup === '0' || envSup === 'false';
+  const shouldSuppress = (envForce || (!envDisable /* default true in Nuxt */)) && __isRemoteAvailable && __hasForwardedOnce;
+  const shouldPrint = !shouldSuppress;
 
   const sid = (payload.sessionId ?? 'anon').slice(0, 8);
   for (const entry of payload.entries) {
@@ -104,3 +152,17 @@ function color(level: Level, msg: string) {
   }
 }
 function dim(s: string) { return c.dim + s + c.reset; }
+
+// Stable per-Nuxt-dev-server id, generated once per process
+let __nuxtDevInstanceId: string | null = null;
+function getOrCreateDevId(): string {
+  if (__nuxtDevInstanceId) return __nuxtDevInstanceId;
+  try {
+    const a = new Uint8Array(8);
+    (globalThis.crypto || require('node:crypto').webcrypto).getRandomValues(a);
+    __nuxtDevInstanceId = Array.from(a).map((b) => b.toString(16).padStart(2,'0')).join('');
+  } catch {
+    __nuxtDevInstanceId = String(Math.random()).slice(2, 10);
+  }
+  return __nuxtDevInstanceId;
+}

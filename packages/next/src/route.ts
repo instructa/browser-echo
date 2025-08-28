@@ -2,28 +2,7 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
 const MCP_BASE = (process.env.BROWSER_ECHO_MCP_URL || 'http://127.0.0.1:5179').replace(/\/$/, '').replace(/\/mcp$/i, '');
-let __probeStarted = false;
-async function __probeHealthOnce(): Promise<boolean> {
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 400);
-    const res = await fetch(`${MCP_BASE}/health`, { signal: ctrl.signal as any, cache: 'no-store' as any });
-    clearTimeout(t);
-    return !!res && res.ok;
-  } catch { return false; }
-}
-function __startHealthProbe() {
-  if (__probeStarted) return;
-  __probeStarted = true;
-  setInterval(async () => {
-    if (__hasForwardedOnce) return;
-    const ok = await __probeHealthOnce();
-    if (ok) __hasForwardedOnce = true;
-  }, 1500);
-}
-__startHealthProbe();
-
-// Simplified: fixed single-server URL or env override
+// Fixed single-server URL or env override; suppression relies on ACK, not health probes
 
 export type BrowserLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
 type Entry = { level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; };
@@ -32,8 +11,22 @@ type Payload = { sessionId?: string; entries: Entry[] };
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Module-scope: suppress only after first confirmed forward (any 2xx)
-let __hasForwardedOnce = false;
+// Module-scope: track MCP availability via ACK; unsuppress on failures
+let __isRemoteAvailable = false;
+let __nextDevInstanceId: string | null = null;
+function getOrCreateDevId(): string {
+  if (__nextDevInstanceId) return __nextDevInstanceId;
+  try {
+    // @ts-ignore: webcrypto may exist in Node 20+
+    const wc = (globalThis as any).crypto?.getRandomValues ? (globalThis as any).crypto : require('node:crypto').webcrypto;
+    const a = new Uint8Array(8);
+    wc.getRandomValues(a);
+    __nextDevInstanceId = Array.from(a).map((b) => b.toString(16).padStart(2,'0')).join('');
+  } catch {
+    __nextDevInstanceId = String(Math.random()).slice(2, 10);
+  }
+  return __nextDevInstanceId;
+}
 
 export async function POST(req: NextRequest) {
   let payload: Payload | null = null;
@@ -44,14 +37,18 @@ export async function POST(req: NextRequest) {
   const baseUrl = MCP_BASE;
   const mcp = { url: baseUrl, routeLogs: '/__client-logs' } as const;
 
-  // Forward to MCP server (fire-and-forget) and update connection state
+  // Forward to MCP server (fire-and-forget) and update availability based on ACK
   try {
     const route = (mcp.routeLogs as `/${string}`) || '/__client-logs';
     const headers: Record<string,string> = { 'content-type': 'application/json' };
     const projectName = (process.env.BROWSER_ECHO_PROJECT_NAME || (process.env.npm_package_name || '')).trim();
     if (projectName) headers['X-Browser-Echo-Project-Name'] = projectName;
+    const devId = getOrCreateDevId();
+    headers['X-Browser-Echo-Dev-Id'] = devId;
+
     const ctrl = new AbortController();
     const timeout = setTimeout(() => ctrl.abort(), 500);
+
     fetch(`${mcp.url}${route}`, {
       method: 'POST',
       headers,
@@ -59,11 +56,46 @@ export async function POST(req: NextRequest) {
       keepalive: true,
       cache: 'no-store',
       signal: ctrl.signal as any,
-    }).then((res) => { try { clearTimeout(timeout); } catch {} if (res && res.ok) __hasForwardedOnce = true; }).catch(() => { try { clearTimeout(timeout); } catch {} });
+    }).then((res) => {
+      try { clearTimeout(timeout); } catch {}
+      const ok = !!res && res.ok;
+      let ackOk = false;
+      try {
+        const ack = (res as any).headers?.get?.('X-Browser-Echo-Ack') || '';
+        if (ack) {
+          const mProject = /project=([^;]*)/i.exec(ack);
+          const mDev = /devId=([^;]*)/i.exec(ack);
+          const mOwner = /owner=([^;]*)/i.exec(ack);
+          const aProject = mProject ? decodeURIComponent(mProject[1]) : '';
+          const aDev = mDev ? decodeURIComponent(mDev[1]) : '';
+          const isOwner = (mOwner ? String(mOwner[1]) : '') === '1';
+          ackOk = (!projectName || aProject === projectName) && aDev === devId && isOwner;
+        }
+      } catch {}
+      if (ok && ackOk) {
+        __isRemoteAvailable = true;
+      } else {
+        __isRemoteAvailable = false;
+      }
+    }).catch(() => {
+      try { clearTimeout(timeout); } catch {}
+      __isRemoteAvailable = false;
+    });
   } catch {}
 
-  // Print locally until first confirmed forward; then suppress
-  const shouldPrint = !__hasForwardedOnce;
+  // Terminal printing policy for Next route:
+  // - Default: ALWAYS print locally
+  // - If BROWSER_ECHO_SUPPRESS_TERMINAL=1|true, suppress when remote ingest is confirmed available
+  // - If BROWSER_ECHO_SUPPRESS_TERMINAL=0|false, always print
+  const envSup = String(process.env.BROWSER_ECHO_SUPPRESS_TERMINAL ?? '').trim().toLowerCase();
+  const envForceSuppress = envSup === '1' || envSup === 'true';
+  const envForcePrint = envSup === '0' || envSup === 'false';
+  let shouldPrint = true;
+  if (envForcePrint) {
+    shouldPrint = true;
+  } else if (envForceSuppress) {
+    shouldPrint = !__isRemoteAvailable;
+  }
 
   const sid = (payload.sessionId ?? 'anon').slice(0, 8);
   for (const entry of payload.entries) {

@@ -2,7 +2,10 @@
   "mcpServers": {
     "browser-echo-local": {
       "command": "node",
-      "args": ["packages/mcp/bin/cli.mjs"]
+      "args": ["packages/mcp/bin/cli.mjs"],
+      "env": {
+        "BROWSER_ECHO_DEBUG": "1"
+      }
     }
   }
 }
