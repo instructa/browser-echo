@@ -292,137 +292,20 @@ function colorize(level: BrowserLogLevel, message: string): string {
 type ClientPayload = { sessionId?: string; entries: Array<{ level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; tag?: string; }>; };
 
 function makeClientModule(options: Required<BrowserLogsToTerminalOptions>) {
-  const include = JSON.stringify(options.include);
-  const preserve = JSON.stringify(options.preserveConsole);
-  const route = JSON.stringify(options.route);
-  const tag = JSON.stringify(options.tag);
-  const batchSize = String(options.batch?.size ?? 20);
-  const batchInterval = String(options.batch?.interval ?? 300);
-  const netEnabled = !!options.networkLogs?.enabled;
-  const netFull = !!options.networkLogs?.captureFull;
-  const bodies = options.networkLogs?.bodies || {};
-  const bodyReq = !!bodies.request;
-  const bodyRes = !!bodies.response;
-  const bodyMax = Number(bodies.maxBytes ?? 2048) | 0;
-  const bodyPretty = bodies.prettyJson !== false;
-  const bodyAllow = Array.isArray(bodies.allowContentTypes) && bodies.allowContentTypes.length ? bodies.allowContentTypes : ['application/json','text/','application/x-www-form-urlencoded'];
-  return `
-const __INSTALLED_KEY = '__vite_browser_echo_installed__';
-if (!window[__INSTALLED_KEY]) {
-  window[__INSTALLED_KEY] = true;
-  const INCLUDE = ${include};
-  const PRESERVE = ${preserve};
-  const ROUTE = ${route};
-  const TAG = ${tag};
-  const BATCH_SIZE = ${batchSize} | 0;
-  const BATCH_INTERVAL = ${batchInterval} | 0;
-  const NET_ENABLED = ${JSON.stringify(netEnabled)};
-  const NET_FULL = ${JSON.stringify(netFull)};
-  const NET_BODY_REQ = ${JSON.stringify(bodyReq)};
-  const NET_BODY_RES = ${JSON.stringify(bodyRes)};
-  const NET_BODY_MAX = ${JSON.stringify(bodyMax)} | 0;
-  const NET_BODY_PRETTY = ${JSON.stringify(bodyPretty)};
-  const NET_BODY_ALLOW = ${JSON.stringify(bodyAllow)};
-  const SESSION = (function(){try{const a=new Uint8Array(8);crypto.getRandomValues(a);return Array.from(a).map(b=>b.toString(16).padStart(2,'0')).join('')}catch{return String(Math.random()).slice(2,10)}})();
-  const queue = []; let timer = null;
-  function enqueue(entry){ queue.push(entry); if (queue.length >= BATCH_SIZE) flush(); else if (!timer) timer = setTimeout(flush, BATCH_INTERVAL); }
-  function flush(){ if (timer) { clearTimeout(timer); timer = null; } if (!queue.length) return;
-    const payload = JSON.stringify({ sessionId: SESSION, entries: queue.splice(0, queue.length) });
-    try { if (navigator.sendBeacon) { navigator.sendBeacon(ROUTE, new Blob([payload], {type:'application/json'})); } else { fetch(ROUTE, { method: 'POST', headers:{'content-type':'application/json'}, body: payload, keepalive: true, cache: 'no-store' }).catch(()=>{}); } } catch {}
-  }
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
-  addEventListener('pagehide', flush); addEventListener('beforeunload', flush);
-  const ORIGINAL = {};
-  for (const level of INCLUDE) {
-    const orig = console[level] ? console[level].bind(console) : console.log.bind(console);
-    ORIGINAL[level] = orig;
-    console[level] = (...args) => {
-      const text = args.map((v)=>{try{if(typeof v==='string') return v; if(v instanceof Error) return (v.name||'Error')+': '+(v.message||''); const seen=new WeakSet(); return JSON.stringify(v,(k,val)=>{ if(typeof val==='bigint') return String(val)+'n'; if(typeof val==='function') return '[Function '+(val.name||'anonymous')+']'; if(val instanceof Error) return {name:val.name,message:val.message,stack:val.stack}; if(typeof val==='symbol') return val.toString(); if(val && typeof val==='object'){ if(seen.has(val)) return '[Circular]'; seen.add(val); } return val; }); } catch { try { return String(v) } catch { return '[Unserializable]' } }}).join(' ');
-      const stack = (new Error()).stack?.split('\\n').slice(1).filter(l=>!/virtual:browser-echo|enqueue|flush/.test(l)).join('\\n') || '';
-      const srcMatch = stack.match(/\\(?((?:file:\\/\\/|https?:\\/\\/|\\/)[^) \\n]+):(\\d+):(\\d+)\\)?/);
-      const source = srcMatch ? (srcMatch[1]+':'+srcMatch[2]+':'+srcMatch[3]) : '';
-      enqueue({ level, text, time: Date.now(), stack, source });
-      if (PRESERVE) { try { orig(...args) } catch {} }
-    };
-  }
-  try { ORIGINAL['info']?.(TAG + ' forwarding console logs to ' + ROUTE + ' (session ' + SESSION + ')'); } catch {}
-  function normUrlStr(input){ try { if(typeof input==='string') return input; if (input && typeof input.url==='string') return input.url; if (input && input.href) return String(input.href||''); return '' } catch { return '' } }
-  if (NET_ENABLED) {
-    try {
-      const __origFetch = window.fetch && window.fetch.bind(window);
-      if (__origFetch) {
-        window.fetch = function(input, init){
-          const start = performance.now();
-          const method = (init && init.method ? String(init.method) : (input && input.method ? String(input.method) : 'GET')).toUpperCase();
-          const u = normUrlStr(input);
-          function baseLine(status, dur){ const st = isFinite(status) ? String(status) : 'ERR'; return '[NETWORK] ['+method+'] ['+(u||'(request)')+'] ['+st+'] ['+dur+'ms]'; }
-          function getHeader(headers, name){ try{ if(!headers) return ''; var key=String(name).toLowerCase(); if (headers.get) { var v=headers.get(name)||headers.get(key)||''; return String(v||'').toLowerCase(); } if (Array.isArray(headers)) { for (var i=0;i<headers.length;i++){ var kv=headers[i]; if (String(kv[0]).toLowerCase()===key) return String(kv[1]||'').toLowerCase(); } } if (typeof headers==='object'){ for (var k in headers){ if (k.toLowerCase()===key) return String(headers[k]||'').toLowerCase(); } } } catch{} return '' }
-          function isAllowed(ct){ try{ var c=String(ct||'').toLowerCase(); if(!c) return false; for (var i=0;i<NET_BODY_ALLOW.length;i++){ var al=String(NET_BODY_ALLOW[i]); if (c.startsWith(al)) return true; } } catch{} return false }
-          function isLikelyText(s){ var t=String(s||'').trim(); if(!t) return true; if(t[0]==='{'||t[0]==='[') return true; return /^[\x09\x0A\x0D\x20-\x7E\u00A0-\uFFFF]*$/.test(t) }
-          function formatSnippet(raw, ct){ try{ var text=String(raw||''); var lct=String(ct||'').toLowerCase(); if (NET_BODY_PRETTY && (lct.startsWith('application/json') || text.trim().startsWith('{') || text.trim().startsWith('['))) { try { text = JSON.stringify(JSON.parse(text), null, 2) } catch {} } var enc=new TextEncoder(); var bytes=enc.encode(text); if (bytes.length <= NET_BODY_MAX) return text; var sliced=bytes.slice(0, Math.max(0, NET_BODY_MAX)); var dec=new TextDecoder(); var shown=dec.decode(sliced); var extra=bytes.length - sliced.length; return shown+'... (+'+extra+' bytes)'; } catch { return '' } }
-          function reqSnippet(){ if(!NET_BODY_REQ) return Promise.resolve(''); try{ if (input && typeof input==='object' && input.clone) { var req=input; var headers=req.headers && req.headers.get ? req.headers : null; var ct=getHeader(headers,'content-type') || (init && init.headers ? getHeader(init.headers,'content-type') : ''); if (!isAllowed(ct)) return Promise.resolve(''); return req.clone().text().then(function(txt){ return formatSnippet(txt, ct) }); } var ct2 = init && init.headers ? getHeader(init.headers,'content-type') : ''; var body = init && init.body; if (typeof body==='string') { if (!ct2 || isAllowed(ct2) || isLikelyText(body)) return Promise.resolve(formatSnippet(body, ct2)); } else if (body && body.toString && (body instanceof URLSearchParams)) { var s = body.toString(); var reqCt = ct2 || 'application/x-www-form-urlencoded'; if (isAllowed(reqCt)) return Promise.resolve(formatSnippet(s, reqCt)); } else if (body && typeof body.size==='number') { var size = Number(body.size)|0; return Promise.resolve('[binary: '+size+' bytes]'); } } catch {} return Promise.resolve('') }
-          function resSnippet(res){ if(!NET_BODY_RES) return Promise.resolve(''); try{ var ct=getHeader(res && res.headers, 'content-type'); if (!isAllowed(ct)) return Promise.resolve(''); if (res && res.clone) { try { var clone=res.clone(); return clone.text().then(function(txt){ return formatSnippet(txt, ct) }); } catch {} } } catch {} return Promise.resolve('') }
-          try {
-            const p = __origFetch(input, init);
-            return Promise.resolve(p).then(function(res){ var dur=Math.max(0, Math.round(performance.now()-start)); var st=Number(res && res.status || 0)|0; var ok=!!(res && res.ok); var extra = NET_FULL ? (' [size:' + (Number(res && res.headers && res.headers.get && res.headers.get('content-length') || 0) | 0) + ']') : ''; Promise.all([reqSnippet(), resSnippet(res)]).then(function(arr){ var reqS=arr[0], resS=arr[1]; var line = baseLine(st, dur) + extra; if (reqS) line += '\n    req: ' + reqS; if (resS) line += '\n    res: ' + resS; enqueue({ level: ok ? 'info' : 'warn', text: line, time: Date.now(), tag: '[network]' }); }).catch(function(){ var line=baseLine(st, dur) + extra; enqueue({ level: ok ? 'info' : 'warn', text: line, time: Date.now(), tag: '[network]' }); }); return res; }).catch(function(err){ var dur=Math.max(0, Math.round(performance.now()-start)); reqSnippet().then(function(reqS){ var line = baseLine(0, dur) + ' fetch failed'; if (reqS) line += '\n    req: ' + reqS; enqueue({ level: 'warn', text: line, time: Date.now(), tag: '[network]' }); }).catch(function(){ var line=baseLine(0, dur) + ' fetch failed'; enqueue({ level: 'warn', text: line, time: Date.now(), tag: '[network]' }); }); throw err; });
-          } catch (err) {
-            var dur2 = Math.max(0, Math.round(performance.now()-start));
-            var line2 = baseLine(0, dur2) + ' fetch failed';
-            enqueue({ level: 'warn', text: line2, time: Date.now(), tag: '[network]' });
-            throw err;
-          }
-        }
-      }
-    } catch {}
-    try {
-      const XHR = window.XMLHttpRequest;
-      if (XHR && XHR.prototype) {
-        const _open = XHR.prototype.open, _send = XHR.prototype.send;
-        XHR.prototype.open = function(method, url){ try{ this.__be_method__ = String(method||'GET').toUpperCase() }catch{} try{ this.__be_url__ = String(url||'') }catch{} return _open.apply(this, arguments); };
-        XHR.prototype.send = function(){ const start = performance.now(); const onEnd = ()=>{ try{ const dur = Math.max(0, Math.round(performance.now()-start)); const method = this.__be_method__ || 'GET'; const u = this.__be_url__ || ''; const status = Number(this.status||0)|0; const ok = status >= 200 && status < 400; const extra = NET_FULL ? ('ready:'+this.readyState) : ''; const line = '[NETWORK] ['+method+'] ['+u+'] ['+(status||'ERR')+'] ['+dur+'ms]'+(extra?(' '+extra):''); enqueue({ level: ok ? 'info' : 'warn', text: line, time: Date.now(), tag: '[network]' }); } catch {} try { this.removeEventListener('loadend', onEnd); this.removeEventListener('error', onEnd); this.removeEventListener('abort', onEnd); } catch {} };
-          try { this.addEventListener('loadend', onEnd); } catch {}
-          try { this.addEventListener('error', onEnd); } catch {}
-          try { this.addEventListener('abort', onEnd); } catch {}
-          return _send.apply(this, arguments);
-        }
-      }
-    } catch {}
-    try {
-      const WS = window.WebSocket;
-      if (WS) {
-        // @ts-ignore
-        window.WebSocket = new Proxy(WS, {
-          construct(Target, args) {
-            const url = normUrlStr(args?.[0]);
-            const start = performance.now();
-            // @ts-ignore
-            const socket = new Target(...args);
-            try {
-              socket.addEventListener('open', () => {
-                const dur = Math.max(0, Math.round(performance.now() - start));
-                const line = '[NETWORK] [WS OPEN] ['+(url||'(ws)')+'] ['+dur+'ms]';
-                enqueue({ level: 'info', text: line, time: Date.now(), tag: '[network]' });
-              });
-              socket.addEventListener('close', (ev) => {
-                const dur = Math.max(0, Math.round(performance.now() - start));
-                const code = Number(ev && ev.code || 0) | 0;
-                const reason = ev && ev.reason ? String(ev.reason) : '';
-                const extra = reason ? ('code:'+code+' reason:'+reason) : ('code:'+code);
-                const line = '[NETWORK] [WS CLOSE] ['+(url||'(ws)')+'] ['+dur+'ms] '+extra;
-                enqueue({ level: code === 1000 ? 'info' : 'warn', text: line, time: Date.now(), tag: '[network]' });
-              });
-              socket.addEventListener('error', () => {
-                const dur = Math.max(0, Math.round(performance.now() - start));
-                const line = '[NETWORK] [WS ERROR] ['+(url||'(ws)')+'] ['+dur+'ms]';
-                enqueue({ level: 'warn', text: line, time: Date.now(), tag: '[network]' });
-              });
-            } catch {}
-            return socket;
-          }
-        });
-      }
-    } catch {}
-  }
-}
-`;
+  const payload = {
+    route: options.route,
+    include: options.include,
+    preserveConsole: options.preserveConsole,
+    tag: options.tag,
+    batch: options.batch,
+    stackMode: options.stackMode,
+    networkLogs: options.networkLogs,
+  };
+  const code = [
+    `import { initBrowserEcho } from '@browser-echo/core';`,
+    `if (typeof window !== 'undefined') {`,
+    `  initBrowserEcho(${JSON.stringify(payload)});`,
+    `}`
+  ].join('\n');
+  return code;
 }
