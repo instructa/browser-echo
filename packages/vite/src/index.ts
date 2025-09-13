@@ -16,7 +16,7 @@ export interface BrowserLogsToTerminalOptions {
   stackMode?: 'none' | 'condensed' | 'full';
   batch?: { size?: number; interval?: number };
   truncate?: number;
-  fileLog?: { enabled?: boolean; dir?: string };
+  fileLog?: { enabled?: boolean; dir?: string; split?: boolean };
   mcp?: { url?: string; routeLogs?: `/${string}`; suppressTerminal?: boolean; headers?: Record<string,string> };
   networkLogs?: {
     enabled?: boolean;
@@ -49,7 +49,7 @@ const DEFAULTS: ResolvedOptions = {
   stackMode: 'condensed',
   batch: { size: 20, interval: 300 },
   truncate: 10_000,
-  fileLog: { enabled: false, dir: 'logs/frontend' },
+  fileLog: { enabled: false, dir: 'logs/frontend', split: false },
   mcp: { url: '', routeLogs: '/__client-logs', suppressTerminal: true, headers: {}, suppressProvided: false },
   networkLogs: { enabled: true, captureFull: false }
 };
@@ -106,8 +106,9 @@ function normalizeMcpBaseUrl(input: string | undefined): string {
 
 function attachMiddleware(server: any, options: ResolvedOptions) {
   const sessionStamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const logFilePath = joinPath(options.fileLog.dir, `dev-${sessionStamp}.log`);
-  if (options.fileLog.enabled) { try { mkdirSync(dirname(logFilePath), { recursive: true }); } catch {} }
+  const baseLogDir = options.fileLog.dir;
+  const defaultFilePath = joinPath(baseLogDir, `dev-${sessionStamp}.log`);
+  if (options.fileLog.enabled && !options.fileLog.split) { try { mkdirSync(dirname(defaultFilePath), { recursive: true }); } catch {} }
 
   // Simplified MCP ingest resolution: project JSON once; no fallback; retry on failure
   let resolvedBase = '';
@@ -237,7 +238,13 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
               : `    ${(String(entry.stack).split(/\r?\n/g).find((l) => l.trim().length > 0) || '').trim()}`;
             toFile.push(stackLines);
           }
-          try { appendFileSync(logFilePath, toFile.join('\n') + '\n'); } catch {}
+          let outPath = defaultFilePath;
+          if (options.fileLog.split) {
+            const tagKey = String(tag || '[browser]').replace(/^[\[]|[\]]$/g, '').toLowerCase().replace(/\s+/g, '-');
+            outPath = joinPath(baseLogDir, tagKey, `dev-${sessionStamp}.log`);
+            try { mkdirSync(dirname(outPath), { recursive: true }); } catch {}
+          }
+          try { appendFileSync(outPath, toFile.join('\n') + '\n'); } catch {}
         }
       }
       res.statusCode = 204; res.end();
@@ -358,7 +365,12 @@ if (!window[__INSTALLED_KEY]) {
           try {
             const p = __origFetch(input, init);
             return Promise.resolve(p).then(function(res){ var dur=Math.max(0, Math.round(performance.now()-start)); var st=Number(res && res.status || 0)|0; var ok=!!(res && res.ok); var extra = NET_FULL ? (' [size:' + (Number(res && res.headers && res.headers.get && res.headers.get('content-length') || 0) | 0) + ']') : ''; Promise.all([reqSnippet(), resSnippet(res)]).then(function(arr){ var reqS=arr[0], resS=arr[1]; var line = baseLine(st, dur) + extra; if (reqS) line += '\n    req: ' + reqS; if (resS) line += '\n    res: ' + resS; enqueue({ level: ok ? 'info' : 'warn', text: line, time: Date.now(), tag: '[network]' }); }).catch(function(){ var line=baseLine(st, dur) + extra; enqueue({ level: ok ? 'info' : 'warn', text: line, time: Date.now(), tag: '[network]' }); }); return res; }).catch(function(err){ var dur=Math.max(0, Math.round(performance.now()-start)); reqSnippet().then(function(reqS){ var line = baseLine(0, dur) + ' fetch failed'; if (reqS) line += '\n    req: ' + reqS; enqueue({ level: 'warn', text: line, time: Date.now(), tag: '[network]' }); }).catch(function(){ var line=baseLine(0, dur) + ' fetch failed'; enqueue({ level: 'warn', text: line, time: Date.now(), tag: '[network]' }); }); throw err; });
-          } catch (err) { emit(0,false, err && err.message ? String(err.message) : 'fetch failed'); throw err; }
+          } catch (err) {
+            var dur2 = Math.max(0, Math.round(performance.now()-start));
+            var line2 = baseLine(0, dur2) + ' fetch failed';
+            enqueue({ level: 'warn', text: line2, time: Date.now(), tag: '[network]' });
+            throw err;
+          }
         }
       }
     } catch {}

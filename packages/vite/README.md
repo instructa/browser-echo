@@ -133,7 +133,7 @@ interface BrowserEchoViteOptions {
   showSource?: boolean;              // default: true
   batch?: { size?: number; interval?: number }; // default: 20 / 300ms
   truncate?: number;                 // default: 10_000 chars
-  fileLog?: { enabled?: boolean; dir?: string }; // default: disabled
+  fileLog?: { enabled?: boolean; dir?: string; split?: boolean }; // default: disabled
   mcp?: { 
     url?: string;                    // MCP server base URL (auto-discovered if not set)
     routeLogs?: `/${string}`;        // MCP logs route (default: '/__client-logs')
@@ -241,6 +241,26 @@ browserEcho({
   }
 })
 ```
+
+### Split file logs by tag
+
+Write separate files under per-tag subdirectories (e.g. `logs/network/dev-*.log`):
+
+```ts
+browserEcho({
+  fileLog: {
+    enabled: true,
+    dir: 'logs',
+    split: true
+  },
+  networkLogs: { enabled: true }
+})
+```
+
+This produces, for example:
+- `logs/browser/dev-YYYY-MM-DDTHH-MM-SS.log`
+- `logs/network/dev-YYYY-MM-DDTHH-MM-SS.log`
+- `logs/worker/dev-YYYY-MM-DDTHH-MM-SS.log`
 
 ## How it works
 
