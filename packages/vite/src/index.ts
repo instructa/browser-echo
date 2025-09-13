@@ -18,7 +18,17 @@ export interface BrowserLogsToTerminalOptions {
   truncate?: number;
   fileLog?: { enabled?: boolean; dir?: string };
   mcp?: { url?: string; routeLogs?: `/${string}`; suppressTerminal?: boolean; headers?: Record<string,string> };
-  networkLogs?: { enabled?: boolean; captureFull?: boolean };
+  networkLogs?: {
+    enabled?: boolean;
+    captureFull?: boolean;
+    bodies?: {
+      request?: boolean;
+      response?: boolean;
+      maxBytes?: number;
+      allowContentTypes?: string[];
+      prettyJson?: boolean;
+    };
+  };
 }
 
 type ResolvedOptions = Required<Omit<BrowserLogsToTerminalOptions, 'batch' | 'fileLog' | 'mcp'>> & {
@@ -123,24 +133,18 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
 
   function readProjectJson(): { url: string; route?: `/${string}` } | null {
     try {
-      let dir = process.cwd();
-      for (let depth = 0; depth < 10; depth++) {
-        const p = joinPath(dir, '.browser-echo-mcp.json');
-        if (existsSync(p)) {
-          const raw = readFileSync(p, 'utf-8');
-          let data: any;
-          try { data = JSON.parse(raw); }
-          catch (err: any) {
-            try { server.config.logger.warn(`${options.tag} failed to parse .browser-echo-mcp.json: ${err?.message || err}`); } catch {}
-            return null;
-          }
-          const url = (data?.url ? String(data.url) : '').replace(/\/$/, '');
-          const route = (data?.route ? String(data.route) : '/__client-logs') as `/${string}`;
-          if (url && /^(http:\/\/127\.0\.0\.1|http:\/\/localhost)/.test(url)) return { url, route };
+      const p = joinPath(process.cwd(), '.browser-echo-mcp.json');
+      if (existsSync(p)) {
+        const raw = readFileSync(p, 'utf-8');
+        let data: any;
+        try { data = JSON.parse(raw); }
+        catch (err: any) {
+          try { server.config.logger.warn(`${options.tag} failed to parse .browser-echo-mcp.json: ${err?.message || err}`); } catch {}
+          return null;
         }
-        const up = dirname(dir);
-        if (up === dir) break;
-        dir = up;
+        const url = (data?.url ? String(data.url) : '').replace(/\/$/, '');
+        const route = (data?.route ? String(data.route) : '/__client-logs') as `/${string}`;
+        if (url && /^(http:\/\/127\.0\.0\.1|http:\/\/localhost)/.test(url)) return { url, route };
       }
     } catch {}
     return null;
@@ -289,6 +293,12 @@ function makeClientModule(options: Required<BrowserLogsToTerminalOptions>) {
   const batchInterval = String(options.batch?.interval ?? 300);
   const netEnabled = !!options.networkLogs?.enabled;
   const netFull = !!options.networkLogs?.captureFull;
+  const bodies = options.networkLogs?.bodies || {};
+  const bodyReq = !!bodies.request;
+  const bodyRes = !!bodies.response;
+  const bodyMax = Number(bodies.maxBytes ?? 2048) | 0;
+  const bodyPretty = bodies.prettyJson !== false;
+  const bodyAllow = Array.isArray(bodies.allowContentTypes) && bodies.allowContentTypes.length ? bodies.allowContentTypes : ['application/json','text/','application/x-www-form-urlencoded'];
   return `
 const __INSTALLED_KEY = '__vite_browser_echo_installed__';
 if (!window[__INSTALLED_KEY]) {
@@ -301,6 +311,11 @@ if (!window[__INSTALLED_KEY]) {
   const BATCH_INTERVAL = ${batchInterval} | 0;
   const NET_ENABLED = ${JSON.stringify(netEnabled)};
   const NET_FULL = ${JSON.stringify(netFull)};
+  const NET_BODY_REQ = ${JSON.stringify(bodyReq)};
+  const NET_BODY_RES = ${JSON.stringify(bodyRes)};
+  const NET_BODY_MAX = ${JSON.stringify(bodyMax)} | 0;
+  const NET_BODY_PRETTY = ${JSON.stringify(bodyPretty)};
+  const NET_BODY_ALLOW = ${JSON.stringify(bodyAllow)};
   const SESSION = (function(){try{const a=new Uint8Array(8);crypto.getRandomValues(a);return Array.from(a).map(b=>b.toString(16).padStart(2,'0')).join('')}catch{return String(Math.random()).slice(2,10)}})();
   const queue = []; let timer = null;
   function enqueue(entry){ queue.push(entry); if (queue.length >= BATCH_SIZE) flush(); else if (!timer) timer = setTimeout(flush, BATCH_INTERVAL); }
@@ -333,10 +348,16 @@ if (!window[__INSTALLED_KEY]) {
           const start = performance.now();
           const method = (init && init.method ? String(init.method) : (input && input.method ? String(input.method) : 'GET')).toUpperCase();
           const u = normUrlStr(input);
-          function emit(status, ok, extra){ const dur = Math.max(0, Math.round(performance.now()-start)); const st = isFinite(status) ? String(status) : 'ERR'; const line = '[NETWORK] ['+method+'] ['+(u||'(request)')+'] ['+st+'] ['+dur+'ms]'+(extra?(' '+extra):''); enqueue({ level: ok ? 'info' : 'warn', text: line, time: Date.now(), tag: '[network]' }); }
+          function baseLine(status, dur){ const st = isFinite(status) ? String(status) : 'ERR'; return '[NETWORK] ['+method+'] ['+(u||'(request)')+'] ['+st+'] ['+dur+'ms]'; }
+          function getHeader(headers, name){ try{ if(!headers) return ''; var key=String(name).toLowerCase(); if (headers.get) { var v=headers.get(name)||headers.get(key)||''; return String(v||'').toLowerCase(); } if (Array.isArray(headers)) { for (var i=0;i<headers.length;i++){ var kv=headers[i]; if (String(kv[0]).toLowerCase()===key) return String(kv[1]||'').toLowerCase(); } } if (typeof headers==='object'){ for (var k in headers){ if (k.toLowerCase()===key) return String(headers[k]||'').toLowerCase(); } } } catch{} return '' }
+          function isAllowed(ct){ try{ var c=String(ct||'').toLowerCase(); if(!c) return false; for (var i=0;i<NET_BODY_ALLOW.length;i++){ var al=String(NET_BODY_ALLOW[i]); if (c.startsWith(al)) return true; } } catch{} return false }
+          function isLikelyText(s){ var t=String(s||'').trim(); if(!t) return true; if(t[0]==='{'||t[0]==='[') return true; return /^[\x09\x0A\x0D\x20-\x7E\u00A0-\uFFFF]*$/.test(t) }
+          function formatSnippet(raw, ct){ try{ var text=String(raw||''); var lct=String(ct||'').toLowerCase(); if (NET_BODY_PRETTY && (lct.startsWith('application/json') || text.trim().startsWith('{') || text.trim().startsWith('['))) { try { text = JSON.stringify(JSON.parse(text), null, 2) } catch {} } var enc=new TextEncoder(); var bytes=enc.encode(text); if (bytes.length <= NET_BODY_MAX) return text; var sliced=bytes.slice(0, Math.max(0, NET_BODY_MAX)); var dec=new TextDecoder(); var shown=dec.decode(sliced); var extra=bytes.length - sliced.length; return shown+'… (+'+extra+' bytes)'; } catch { return '' } }
+          function reqSnippet(){ if(!NET_BODY_REQ) return Promise.resolve(''); try{ if (input && typeof input==='object' && input.clone) { var req=input; var headers=req.headers && req.headers.get ? req.headers : null; var ct=getHeader(headers,'content-type') || (init && init.headers ? getHeader(init.headers,'content-type') : ''); if (!isAllowed(ct)) return Promise.resolve(''); return req.clone().text().then(function(txt){ return formatSnippet(txt, ct) }); } var ct2 = init && init.headers ? getHeader(init.headers,'content-type') : ''; var body = init && init.body; if (typeof body==='string') { if (!ct2 || isAllowed(ct2) || isLikelyText(body)) return Promise.resolve(formatSnippet(body, ct2)); } else if (body && body.toString && (body instanceof URLSearchParams)) { var s = body.toString(); var reqCt = ct2 || 'application/x-www-form-urlencoded'; if (isAllowed(reqCt)) return Promise.resolve(formatSnippet(s, reqCt)); } else if (body && typeof body.size==='number') { var size = Number(body.size)|0; return Promise.resolve('[binary: '+size+' bytes]'); } } catch {} return Promise.resolve('') }
+          function resSnippet(res){ if(!NET_BODY_RES) return Promise.resolve(''); try{ var ct=getHeader(res && res.headers, 'content-type'); if (!isAllowed(ct)) return Promise.resolve(''); if (res && res.clone) { try { var clone=res.clone(); if (clone && clone.body && clone.body.getReader) { return (async function(){ try{ var reader=clone.body.getReader(); var chunks=[]; var received=0; while(true){ var r=await reader.read(); if(r.done) break; var v=r.value; if(v){ var need = NET_BODY_MAX - received; if (received < NET_BODY_MAX) chunks.push(need >= v.length ? v : v.slice(0, need)); received += v.length; if (received >= NET_BODY_MAX) { try{ reader.cancel && reader.cancel() }catch{} break; } } } var totalLen=chunks.reduce((n,a)=>n+a.length,0); var out=new Uint8Array(totalLen); var off=0; for (var i=0;i<chunks.length;i++){ var a=chunks[i]; out.set(a, off); off+=a.length; } var dec=new TextDecoder(); var shown=dec.decode(out); if (received <= NET_BODY_MAX) return formatSnippet(shown, ct); var extra = received - out.length; return shown+'… (+'+extra+' bytes)'; } catch { try { var t = await clone.text(); return formatSnippet(t, ct) } catch { return '' } } })(); } return clone.text().then(function(txt){ return formatSnippet(txt, ct) }) } } catch {} return Promise.resolve('') }
           try {
             const p = __origFetch(input, init);
-            return Promise.resolve(p).then(function(res){ try { if (NET_FULL) { let len = 0; try { const cl = res && res.headers && res.headers.get && res.headers.get('content-length'); len = Number(cl||0)|0; } catch {} emit(Number(res && res.status || 0)|0, !!(res && res.ok), '[size:'+len+']'); } else { emit(Number(res && res.status || 0)|0, !!(res && res.ok)); } } catch {} return res; }).catch(function(err){ emit(0,false, err && err.message ? String(err.message) : 'fetch failed'); throw err; });
+            return Promise.resolve(p).then(function(res){ var dur=Math.max(0, Math.round(performance.now()-start)); var st=Number(res && res.status || 0)|0; var ok=!!(res && res.ok); var extra = NET_FULL ? (' [size:' + (Number(res && res.headers && res.headers.get && res.headers.get('content-length') || 0) | 0) + ']') : ''; Promise.all([reqSnippet(), resSnippet(res)]).then(function(arr){ var reqS=arr[0], resS=arr[1]; var line = baseLine(st, dur) + extra; if (reqS) line += '\n    req: ' + reqS; if (resS) line += '\n    res: ' + resS; enqueue({ level: ok ? 'info' : 'warn', text: line, time: Date.now(), tag: '[network]' }); }).catch(function(){ var line=baseLine(st, dur) + extra; enqueue({ level: ok ? 'info' : 'warn', text: line, time: Date.now(), tag: '[network]' }); }); return res; }).catch(function(err){ var dur=Math.max(0, Math.round(performance.now()-start)); reqSnippet().then(function(reqS){ var line = baseLine(0, dur) + ' fetch failed'; if (reqS) line += '\n    req: ' + reqS; enqueue({ level: 'warn', text: line, time: Date.now(), tag: '[network]' }); }).catch(function(){ var line=baseLine(0, dur) + ' fetch failed'; enqueue({ level: 'warn', text: line, time: Date.now(), tag: '[network]' }); }); throw err; });
           } catch (err) { emit(0,false, err && err.message ? String(err.message) : 'fetch failed'); throw err; }
         }
       }

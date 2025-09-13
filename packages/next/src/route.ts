@@ -35,8 +35,15 @@ export async function POST(req: NextRequest) {
   }
 
   // Dynamically decide whether to print to terminal
-  // Only suppress when explicitly configured via env var
-  const shouldPrint = !process.env.BROWSER_ECHO_MCP_URL;
+  // Only suppress when MCP URL is explicitly configured via env var
+  const envMcp = (() => {
+    const raw = process.env.BROWSER_ECHO_MCP_URL;
+    if (!raw) return '';
+    const s = String(raw).trim().toLowerCase();
+    if (!s || s === 'undefined' || s === 'null' || s === 'false' || s === '0') return '';
+    return String(raw).trim();
+  })();
+  const shouldPrint = !envMcp;
 
   const sid = (payload.sessionId ?? 'anon').slice(0, 8);
   for (const entry of payload.entries) {

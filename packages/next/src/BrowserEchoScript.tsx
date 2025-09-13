@@ -13,7 +13,17 @@ export interface BrowserEchoScriptProps {
   stackMode?: 'none' | 'condensed' | 'full';
   showSource?: boolean;
   batch?: { size?: number; interval?: number };
-  networkLogs?: { enabled?: boolean; captureFull?: boolean };
+  networkLogs?: {
+    enabled?: boolean;
+    captureFull?: boolean;
+    bodies?: {
+      request?: boolean;
+      response?: boolean;
+      maxBytes?: number;
+      allowContentTypes?: string[];
+      prettyJson?: boolean;
+    };
+  };
 }
 
 export default function BrowserEchoScript(props: BrowserEchoScriptProps): JSX.Element {
@@ -43,6 +53,7 @@ export default function BrowserEchoScript(props: BrowserEchoScriptProps): JSX.El
   var STACK_MODE=${JSON.stringify(stackMode)}, SHOW_SOURCE=${JSON.stringify(showSource)};
   var BATCH_SIZE=${JSON.stringify(batchSize)}, BATCH_INTERVAL=${JSON.stringify(batchInterval)};
   var NET_ENABLED=${JSON.stringify(netEnabled)}, NET_FULL=${JSON.stringify(netFull)};
+  var NET_BODY=${JSON.stringify(props.networkLogs?.bodies || {})};
   var SESSION=(function(){try{var a=new Uint8Array(8);crypto.getRandomValues(a);return Array.from(a).map(b=>b.toString(16).padStart(2,'0')).join('')}catch{return String(Math.random()).slice(2,10)}})();
   var q=[],t=null;
   function enqueue(e){q.push(e); if(q.length>=BATCH_SIZE){flush()} else if(!t){t=setTimeout(flush,BATCH_INTERVAL)}}
@@ -83,6 +94,10 @@ export default function BrowserEchoScript(props: BrowserEchoScriptProps): JSX.El
   try{ ORIGINAL['info'] && ORIGINAL['info'](TAG+' forwarding console logs to '+ROUTE+' (session '+SESSION+')') }catch(_){ }
 
   function normUrl(input){ try { var s=''; if(typeof input==='string') s=input; else if (input && typeof input.url==='string') s=input.url; else if (input && input.href) s=String(input.href||''); return s; } catch { return '' } }
+  function __getHeader(headers,name){ try{ if(!headers) return ''; var key=String(name).toLowerCase(); if (headers.get) { var v=headers.get(name)||headers.get(key)||''; return String(v||'').toLowerCase(); } if (Array.isArray(headers)) { for (var i=0;i<headers.length;i++){ var kv=headers[i]; if (String(kv[0]).toLowerCase()===key) return String(kv[1]||'').toLowerCase(); } } if (typeof headers==='object'){ for (var k in headers){ if (k.toLowerCase()===key) return String(headers[k]||'').toLowerCase(); } } } catch{} return '' }
+  function __isAllowed(ct){ try{ var allow=(NET_BODY.allowContentTypes && NET_BODY.allowContentTypes.length) ? NET_BODY.allowContentTypes : ['application/json','text/','application/x-www-form-urlencoded']; var c=String(ct||'').toLowerCase(); if(!c) return false; for (var i=0;i<allow.length;i++){ var al=String(allow[i]); if (c.startsWith(al)) return true; } } catch{} return false }
+  function __isLikelyText(s){ var t=String(s||'').trim(); if(!t) return true; if(t[0]==='{'||t[0]==='[') return true; return /^[\x09\x0A\x0D\x20-\x7E\u00A0-\uFFFF]*$/.test(t) }
+  function __fmtSnippet(raw, ct){ try{ var max=(NET_BODY.maxBytes ?? 2048)|0; var pretty=(NET_BODY.prettyJson !== false); var text=String(raw||''); var lct=String(ct||'').toLowerCase(); if (pretty && (lct.startsWith('application/json') || text.trim().startsWith('{') || text.trim().startsWith('['))) { try { text = JSON.stringify(JSON.parse(text), null, 2) } catch {} } var enc=new TextEncoder(); var bytes=enc.encode(text); if (bytes.length <= max) return text; var sliced=bytes.slice(0, Math.max(0, max)); var dec=new TextDecoder(); var shown=dec.decode(sliced); var extra=bytes.length - sliced.length; return shown+'… (+'+extra+' bytes)'; } catch { return '' } }
   if (NET_ENABLED) {
     try {
       var __origFetch = window.fetch && window.fetch.bind(window);
@@ -91,10 +106,12 @@ export default function BrowserEchoScript(props: BrowserEchoScriptProps): JSX.El
           var start = performance.now();
           var method = (init && init.method ? String(init.method) : (input && input.method ? String(input.method) : 'GET')).toUpperCase();
           var u = normUrl(input);
-          function emit(status, ok, extra){ var dur = Math.max(0, Math.round(performance.now()-start)); var st = isFinite(status) ? String(status) : 'ERR'; var line = '[NETWORK] ['+method+'] ['+(u||'(request)')+'] ['+st+'] ['+dur+'ms]'+(extra?(' '+extra):''); enqueue({ level: ok ? 'info' : 'warn', text: line, time: Date.now(), tag: '[network]' }); }
+          function baseLine(status, dur){ var st = isFinite(status) ? String(status) : 'ERR'; return '[NETWORK] ['+method+'] ['+(u||'(request)')+'] ['+st+'] ['+dur+'ms]'; }
+          function reqSnippet(){ var cfg = NET_BODY || {}; if(!cfg.request) return Promise.resolve(''); try{ if (input && typeof input==='object' && input.clone) { var req=input; var headers=req.headers && req.headers.get ? req.headers : null; var ct=__getHeader(headers,'content-type') || (init && init.headers ? __getHeader(init.headers,'content-type') : ''); if (!__isAllowed(ct)) return Promise.resolve(''); return req.clone().text().then(function(txt){ return __fmtSnippet(txt, ct) }); } var ct2 = init && init.headers ? __getHeader(init.headers,'content-type') : ''; var body = init && init.body; if (typeof body==='string') { if (!ct2 || __isAllowed(ct2) || __isLikelyText(body)) return Promise.resolve(__fmtSnippet(body, ct2)); } else if (body && body.toString && (body instanceof URLSearchParams)) { var s = body.toString(); var reqCt = ct2 || 'application/x-www-form-urlencoded'; if (__isAllowed(reqCt)) return Promise.resolve(__fmtSnippet(s, reqCt)); } else if (body && typeof body.size==='number') { var size = Number(body.size)|0; return Promise.resolve('[binary: '+size+' bytes]'); } } catch {} return Promise.resolve('') }
+          function resSnippet(res){ var cfg = NET_BODY || {}; if(!cfg.response) return Promise.resolve(''); try{ var ct=__getHeader(res && res.headers, 'content-type'); if (!__isAllowed(ct)) return Promise.resolve(''); if (res && res.clone) { try { var clone=res.clone(); if (clone && clone.body && clone.body.getReader) { return (async function(){ try{ var reader=clone.body.getReader(); var chunks=[]; var received=0; var max=(NET_BODY.maxBytes ?? 2048)|0; while(true){ var r=await reader.read(); if(r.done) break; var v=r.value; if(v){ var need = max - received; if (received < max) chunks.push(need >= v.length ? v : v.slice(0, need)); received += v.length; if (received >= max) { try{ reader.cancel && reader.cancel() }catch{} break; } } } var totalLen=chunks.reduce((n,a)=>n+a.length,0); var out=new Uint8Array(totalLen); var off=0; for (var i=0;i<chunks.length;i++){ var a=chunks[i]; out.set(a, off); off+=a.length; } var dec=new TextDecoder(); var shown=dec.decode(out); if (received <= max) return __fmtSnippet(shown, ct); var extra = received - out.length; return shown+'… (+'+extra+' bytes)'; } catch { try { var t = await clone.text(); return __fmtSnippet(t, ct) } catch { return '' } } })(); } return clone.text().then(function(txt){ return __fmtSnippet(txt, ct) }) } } catch {} return Promise.resolve('') }
           try {
             var p = __origFetch(input, init);
-            return Promise.resolve(p).then(function(res){ try { if (NET_FULL) { var len = 0; try { var cl = res && res.headers && res.headers.get && res.headers.get('content-length'); len = Number(cl||0)|0; } catch {} emit(Number(res && res.status || 0)|0, !!(res && res.ok), '[size:'+len+']'); } else { emit(Number(res && res.status || 0)|0, !!(res && res.ok)); } } catch {} return res; }).catch(function(err){ emit(0,false, err && err.message ? String(err.message) : 'fetch failed'); throw err; });
+            return Promise.resolve(p).then(function(res){ var dur=Math.max(0, Math.round(performance.now()-start)); var st=Number(res && res.status || 0)|0; var ok=!!(res && res.ok); var extra = NET_FULL ? (' [size:' + (Number(res && res.headers && res.headers.get && res.headers.get('content-length') || 0) | 0) + ']') : ''; Promise.all([reqSnippet(), resSnippet(res)]).then(function(arr){ var reqS=arr[0], resS=arr[1]; var line = baseLine(st, dur) + extra; if (reqS) line += '\n    req: ' + reqS; if (resS) line += '\n    res: ' + resS; enqueue({ level: ok ? 'info' : 'warn', text: line, time: Date.now(), tag: '[network]' }); }).catch(function(){ var line=baseLine(st, dur) + extra; enqueue({ level: ok ? 'info' : 'warn', text: line, time: Date.now(), tag: '[network]' }); }); return res; }).catch(function(err){ var dur=Math.max(0, Math.round(performance.now()-start)); reqSnippet().then(function(reqS){ var line = baseLine(0, dur) + ' fetch failed'; if (reqS) line += '\n    req: ' + reqS; enqueue({ level: 'warn', text: line, time: Date.now(), tag: '[network]' }); }).catch(function(){ var line=baseLine(0, dur) + ' fetch failed'; enqueue({ level: 'warn', text: line, time: Date.now(), tag: '[network]' }); }); throw err; });
           } catch (err) { emit(0,false, err && err.message ? String(err.message) : 'fetch failed'); throw err; }
         }
       }
