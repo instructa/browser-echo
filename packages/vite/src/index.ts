@@ -215,7 +215,7 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
         const level = normalizeLevel(entry.level);
         const tag = entry.tag || options.tag;
         const truncated = typeof entry.text === 'string' && entry.text.length > options.truncate
-          ? entry.text.slice(0, options.truncate) + '… (truncated)'
+          ? entry.text.slice(0, options.truncate) + '... (truncated)'
           : entry.text;
         let line = `${tag} [${sid}] ${level.toUpperCase()}: ${truncated}`;
         if (options.showSource && entry.source) line += ` (${entry.source})`;
