@@ -21,6 +21,7 @@ This package provides a Vite plugin that includes dev middleware and a virtual m
 - Full stack trace support with multiple modes
 - Works with `index.html` or server-side rendered apps
  - Optional network capture (opt-in): fetch, XMLHttpRequest, WebSocket
+ - Optional request/response body snippets (opt-in) with safe truncation
 
 ## Installation
 
@@ -141,7 +142,17 @@ interface BrowserEchoViteOptions {
   };
   discoverMcp?: boolean;             // Enable MCP auto-discovery (default: true)
   discoveryRefreshMs?: number;       // Discovery refresh interval (default: 30000)
-  networkLogs?: { enabled?: boolean; captureFull?: boolean }; // default disabled
+  networkLogs?: {
+    enabled?: boolean;
+    captureFull?: boolean;
+    bodies?: {
+      request?: boolean;
+      response?: boolean;
+      maxBytes?: number;                       // default 2048 bytes
+      allowContentTypes?: string[];            // default ['application/json','text/','application/x-www-form-urlencoded']
+      prettyJson?: boolean;                    // default true
+    };
+  }; // default disabled
 }
 ```
 
@@ -170,6 +181,31 @@ browserEcho({
     headers: { 'Authorization': 'Bearer ...' } // Custom headers if needed
   }
 })
+```
+
+### Network body snippets (opt-in)
+
+```ts
+browserEcho({
+  networkLogs: {
+    enabled: true,
+    bodies: {
+      request: true,
+      response: true,
+      maxBytes: 2048,
+      allowContentTypes: ['application/json','text/','application/x-www-form-urlencoded'],
+      prettyJson: true
+    }
+  }
+})
+```
+
+Output example:
+
+```
+[NETWORK] [POST] [/api/users] [200] [18ms]
+    req: {"name":"Ada"}
+    res: { "id": 1, "name": "Ada" }
 ```
 
 ### Disable MCP

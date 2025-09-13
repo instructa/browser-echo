@@ -60,7 +60,17 @@ interface BrowserEchoScriptProps {
   // batching
   batch?: { size?: number; interval?: number }; // default: 20 / 300ms
   // Opt-in network capture (fetch/XHR/WS)
-  networkLogs?: { enabled?: boolean; captureFull?: boolean };
+  networkLogs?: {
+    enabled?: boolean;
+    captureFull?: boolean;
+    bodies?: {
+      request?: boolean;
+      response?: boolean;
+      maxBytes?: number;                       // default 2048 bytes
+      allowContentTypes?: string[];            // default ['application/json','text/','application/x-www-form-urlencoded']
+      prettyJson?: boolean;                    // default true
+    };
+  };
 }
 ```
 
@@ -102,6 +112,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             stackMode="condensed"
             showSource={true}
             batch={{ size: 10, interval: 500 }}
+            networkLogs={{
+              enabled: true,
+              bodies: { request: true, response: true, maxBytes: 2048 }
+            }}
           />
         )}
       </head>

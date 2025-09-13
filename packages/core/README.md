@@ -45,7 +45,17 @@ initBrowserEcho({
   batch: { size: 20, interval: 300 },
   stackMode: 'condensed',
   // Opt-in network logging
-  networkLogs: { enabled: true, captureFull: false }
+  networkLogs: {
+    enabled: true,
+    captureFull: false,
+    bodies: {
+      request: true,
+      response: true,
+      maxBytes: 2048,
+      allowContentTypes: ['application/json', 'text/', 'application/x-www-form-urlencoded'],
+      prettyJson: true
+    }
+  }
 });
 ```
 
@@ -71,7 +81,17 @@ interface BrowserEchoOptions {
   truncate?: number;                 // default: 10_000 chars (Vite)
   fileLog?: { enabled?: boolean; dir?: string }; // Vite-only
   // network capture (opt-in)
-  networkLogs?: { enabled?: boolean; captureFull?: boolean }; // default disabled
+  networkLogs?: {
+    enabled?: boolean;
+    captureFull?: boolean;
+    bodies?: {
+      request?: boolean;
+      response?: boolean;
+      maxBytes?: number;                       // default 2048 bytes
+      allowContentTypes?: string[];            // default ['application/json','text/','application/x-www-form-urlencoded']
+      prettyJson?: boolean;                    // default true
+    };
+  }; // default disabled
 }
 ```
 

@@ -63,7 +63,17 @@ interface BrowserEchoNuxtOptions {
   batch?: { size?: number; interval?: number }; // default: 20 / 300ms
   stackMode?: 'full' | 'condensed' | 'none';    // default: 'condensed'
   // Opt-in network capture (fetch/XHR/WS)
-  networkLogs?: { enabled?: boolean; captureFull?: boolean };
+  networkLogs?: {
+    enabled?: boolean;
+    captureFull?: boolean;
+    bodies?: {
+      request?: boolean;
+      response?: boolean;
+      maxBytes?: number;                       // default 2048 bytes
+      allowContentTypes?: string[];            // default ['application/json','text/','application/x-www-form-urlencoded']
+      prettyJson?: boolean;                    // default true
+    };
+  };
 }
 ```
 
@@ -94,6 +104,11 @@ export default defineNuxtConfig({
     batch: { 
       size: 10,    // Send after 10 logs
       interval: 500 // Or after 500ms
+    },
+    // Enable network body snippets (opt-in)
+    networkLogs: {
+      enabled: true,
+      bodies: { request: true, response: true, maxBytes: 2048 }
     }
   }
 });
