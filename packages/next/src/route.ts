@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 // Simplified: resolve MCP from project-local JSON once; no fallback
 
 export type BrowserLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
-type Entry = { level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; };
+type Entry = { level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; tag?: string };
 type Payload = { sessionId?: string; entries: Entry[] };
 
 export const runtime = 'nodejs';
@@ -35,12 +35,13 @@ export async function POST(req: NextRequest) {
   }
 
   // Dynamically decide whether to print to terminal
-  const shouldPrint = !mcp.url;
+  // Only suppress when explicitly configured via env var
+  const shouldPrint = !process.env.BROWSER_ECHO_MCP_URL;
 
   const sid = (payload.sessionId ?? 'anon').slice(0, 8);
   for (const entry of payload.entries) {
     const level = norm(entry.level);
-    let line = `[browser] [${sid}] ${level.toUpperCase()}: ${entry.text}`;
+    let line = `${entry.tag || '[browser]'} [${sid}] ${level.toUpperCase()}: ${entry.text}`;
     if (entry.source) line += ` (${entry.source})`;
     if (shouldPrint) print(level, color(level, line));
     if (entry.stack && shouldPrint) print(level, dim(indent(entry.stack, '    ')));

@@ -18,7 +18,8 @@ export function registerGetLogsTool(ctx: McpToolContext) {
         includeStack = false,
         limit = 1000,
         contains,
-        sinceMs
+        sinceMs,
+        tag
       } = safeArgs;
 
       const validSession = validateSessionId(session);
@@ -29,6 +30,7 @@ export function registerGetLogsTool(ctx: McpToolContext) {
       if (validSince) items = items.filter(e => !e.time || e.time >= validSince);
       if (level?.length) items = items.filter(e => level.includes(e.level));
       if (contains) items = items.filter(e => (e.text || '').includes(contains));
+      if (tag) items = items.filter(e => (e.tag || '[browser]') === tag);
       const final = includeStack ? items : items.map(e => ({ ...e, stack: '' }));
 
       const limited = limit && final.length > limit ? final.slice(-limit) : final;

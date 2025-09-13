@@ -38,6 +38,15 @@ export function initBrowserEcho(opts: InitBrowserEchoOptions = {}) {
     ORIGINAL['info']?.(`${tag} forwarding console logs to ${route} (session ${session})`);
   } catch {}
 
+  // Optional: network capture (fetch + XHR)
+  const networkEnabled = !!opts.networkLogs?.enabled;
+  const networkFull = !!opts.networkLogs?.captureFull;
+  if (networkEnabled) {
+    try { installFetchCapture(); } catch {}
+    try { installXhrCapture(); } catch {}
+    try { installWebSocketCapture(); } catch {}
+  }
+
   function enqueue(entry: any) {
     queue.push(entry);
     if (queue.length >= batchSize) flush();
@@ -119,6 +128,121 @@ export function initBrowserEcho(opts: InitBrowserEchoOptions = {}) {
     if (!stack) return '';
     const m = stack.match(/\(?((?:file:\/\/|https?:\/\/|\/)[^) \n]+):(\d+):(\d+)\)?/);
     return m ? `${m[1]}:${m[2]}:${m[3]}` : '';
+  }
+
+  function normalizeUrlString(input: any): string {
+    try {
+      if (typeof input === 'string') return input;
+      if (input && typeof input.url === 'string') return input.url;
+      if (input instanceof URL) return input.toString();
+      return '';
+    } catch { return ''; }
+  }
+
+  function installFetchCapture() {
+    const orig = (window as any).fetch?.bind(window);
+    if (!orig) return;
+    (window as any).fetch = (input: any, init?: any) => {
+      const start = performance.now();
+      const method = (init?.method || (typeof input === 'object' && input?.method) || 'GET').toUpperCase();
+      const url = normalizeUrlString(input);
+      const emit = (status: number, ok: boolean, extra?: string) => {
+        const dur = Math.max(0, Math.round(performance.now() - start));
+        const statusText = isFinite(status as any) ? String(status) : 'ERR';
+        const text = `[NETWORK] [${method}] [${url || '(request)'}] [${statusText}] [${dur}ms]${extra ? ' ' + extra : ''}`;
+        enqueue({ level: ok ? 'info' : 'warn', text, time: Date.now(), tag: '[network]' });
+      };
+      try {
+        const p = orig(input, init);
+        return Promise.resolve(p).then((res: any) => {
+          try {
+            if (networkFull) {
+              const headers: any = {};
+              try { res.headers && res.headers.forEach && res.headers.forEach((v: string, k: string) => { headers[k] = v; }); } catch {}
+              emit(Number(res?.status ?? 0) | 0, !!res?.ok, `[size:${Number(res?.headers?.get?.('content-length') || 0) | 0}]`);
+            } else {
+              emit(Number(res?.status ?? 0) | 0, !!res?.ok);
+            }
+          } catch {}
+          return res;
+        }).catch((err: any) => {
+          emit(0, false, err?.message ? String(err.message) : 'fetch failed');
+          throw err;
+        });
+      } catch (err: any) {
+        emit(0, false, err?.message ? String(err.message) : 'fetch failed');
+        throw err;
+      }
+    };
+  }
+
+  function installXhrCapture() {
+    const XHR = (window as any).XMLHttpRequest;
+    if (!XHR || !XHR.prototype) return;
+    const origOpen = XHR.prototype.open;
+    const origSend = XHR.prototype.send;
+    XHR.prototype.open = function(method: string, url: string) {
+      try { (this as any).__be_method__ = String(method || 'GET').toUpperCase(); } catch {}
+      try { (this as any).__be_url__ = String(url || ''); } catch {}
+      return origOpen.apply(this, arguments as any);
+    } as any;
+    XHR.prototype.send = function() {
+      const start = performance.now();
+      const onEnd = () => {
+        try {
+          const dur = Math.max(0, Math.round(performance.now() - start));
+          const method = (this as any).__be_method__ || 'GET';
+          const u = (this as any).__be_url__ || '';
+          const status = Number((this as any).status ?? 0) | 0;
+          const ok = status >= 200 && status < 400;
+          const extra = networkFull ? `ready:${(this as any).readyState}` : '';
+          const text = `[NETWORK] [${method}] [${u}] [${status || 'ERR'}] [${dur}ms]${extra ? ' ' + extra : ''}`;
+          enqueue({ level: ok ? 'info' : 'warn', text, time: Date.now(), tag: '[network]' });
+        } catch {}
+        try {
+          this.removeEventListener('loadend', onEnd);
+          this.removeEventListener('error', onEnd);
+          this.removeEventListener('abort', onEnd);
+        } catch {}
+      };
+      try { this.addEventListener('loadend', onEnd); } catch {}
+      try { this.addEventListener('error', onEnd); } catch {}
+      try { this.addEventListener('abort', onEnd); } catch {}
+      return origSend.apply(this, arguments as any);
+    } as any;
+  }
+
+  function installWebSocketCapture() {
+    const WS = (window as any).WebSocket;
+    if (!WS) return;
+    (window as any).WebSocket = new Proxy(WS, {
+      construct(Target: any, args: any[]) {
+        const url = normalizeUrlString(args?.[0]);
+        const start = performance.now();
+        const socket = new Target(...args);
+        try {
+          socket.addEventListener('open', () => {
+            const dur = Math.max(0, Math.round(performance.now() - start));
+            const text = `[NETWORK] [WS OPEN] [${url || '(ws)'}] [${dur}ms]`;
+            enqueue({ level: 'info', text, time: Date.now(), tag: '[network]' });
+          });
+          socket.addEventListener('close', (ev: any) => {
+            const dur = Math.max(0, Math.round(performance.now() - start));
+            const code = Number(ev?.code ?? 0) | 0;
+            const reason = ev?.reason ? String(ev.reason) : '';
+            const extra = reason ? `code:${code} reason:${reason}` : `code:${code}`;
+            const text = `[NETWORK] [WS CLOSE] [${url || '(ws)'}] [${dur}ms] ${extra}`;
+            enqueue({ level: code === 1000 ? 'info' : 'warn', text, time: Date.now(), tag: '[network]' });
+          });
+          socket.addEventListener('error', () => {
+            const dur = Math.max(0, Math.round(performance.now() - start));
+            const text = `[NETWORK] [WS ERROR] [${url || '(ws)'}] [${dur}ms]`;
+            enqueue({ level: 'warn', text, time: Date.now(), tag: '[network]' });
+          });
+        } catch {}
+        return socket;
+      }
+    });
   }
 
   function randomId() {

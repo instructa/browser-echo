@@ -18,6 +18,7 @@ This package provides the `initBrowserEcho` function that patches `console.*` me
 - Configurable log levels and batching
 - Circular reference handling in logged objects
 - No production impact (meant for development only)
+ - Optional network capture (opt-in): fetch, XMLHttpRequest, WebSocket
 
 ## Installation
 
@@ -42,7 +43,9 @@ initBrowserEcho({
   preserveConsole: true,
   tag: '[browser]',
   batch: { size: 20, interval: 300 },
-  stackMode: 'condensed'
+  stackMode: 'condensed',
+  // Opt-in network logging
+  networkLogs: { enabled: true, captureFull: false }
 });
 ```
 
@@ -67,6 +70,8 @@ interface BrowserEchoOptions {
   // server-side
   truncate?: number;                 // default: 10_000 chars (Vite)
   fileLog?: { enabled?: boolean; dir?: string }; // Vite-only
+  // network capture (opt-in)
+  networkLogs?: { enabled?: boolean; captureFull?: boolean }; // default disabled
 }
 ```
 

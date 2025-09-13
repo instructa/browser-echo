@@ -20,6 +20,7 @@ This package provides a Vite plugin that includes dev middleware and a virtual m
 - Colorized terminal output
 - Full stack trace support with multiple modes
 - Works with `index.html` or server-side rendered apps
+ - Optional network capture (opt-in): fetch, XMLHttpRequest, WebSocket
 
 ## Installation
 
@@ -140,6 +141,7 @@ interface BrowserEchoViteOptions {
   };
   discoverMcp?: boolean;             // Enable MCP auto-discovery (default: true)
   discoveryRefreshMs?: number;       // Discovery refresh interval (default: 30000)
+  networkLogs?: { enabled?: boolean; captureFull?: boolean }; // default disabled
 }
 ```
 
@@ -184,6 +186,8 @@ browserEcho({
 - `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Set MCP server URL
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Force suppress terminal output
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=0` — Force show terminal output
+ - `BROWSER_ECHO_FILE_LOG=true` — Enable MCP-side file logging (ingest server)
+ - `BROWSER_ECHO_SPLIT_LOGS=true` — Split logs into logs/frontend vs combined
 
 #### Discovery behavior
 

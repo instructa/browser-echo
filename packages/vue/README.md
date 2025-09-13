@@ -184,6 +184,8 @@ export default defineConfig({
 
 For Vue (non-Vite) apps, MCP forwarding depends on your server-side route implementation. The Vue provider only handles browser-side log collection.
 
+Note: Network capture (fetch/XHR/WS) is available via `@browser-echo/core` and framework providers (Vite, Next, Nuxt). This Vue (non-Vite) package does not inject network capture on its own.
+
 **📖 [First, set up the MCP server](../mcp/README.md#installation) for your AI assistant, then configure framework options below.**
 
 ### Environment Variables

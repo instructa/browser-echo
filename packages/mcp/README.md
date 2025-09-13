@@ -196,6 +196,9 @@ get_logs({ sinceMs: Date.now() - 300000 })
 
 // Limit results and exclude stack traces
 get_logs({ level: ['error'], limit: 10, includeStack: false })
+
+// Filter by stream tag: '[browser]' | '[network]' | '[worker]'
+get_logs({ tag: '[network]' })
 ```
 
 **Parameters:**
@@ -205,6 +208,7 @@ get_logs({ level: ['error'], limit: 10, includeStack: false })
 - `limit?: number` — Maximum entries to return (default: `1000`, max: `5000`)
 - `contains?: string` — Filter by substring in log text
 - `sinceMs?: number` — Only logs with timestamp >= sinceMs
+ - `tag?: '[browser]' | '[network]' | '[worker]'` — Filter by stream tag
 
 **Returns:** Formatted text suitable for AI analysis + structured JSON data
 
@@ -405,6 +409,8 @@ Configure the MCP server behavior with these environment variables:
 - `BROWSER_ECHO_INGEST_PORT=5179` — Force a fixed ingest port in stdio mode (default: 5179)
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Force suppress terminal output when MCP is forwarding logs
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=0` — Force show terminal output even when MCP is active
+ - `BROWSER_ECHO_FILE_LOG=true` — Enable ingest-side file logging
+ - `BROWSER_ECHO_SPLIT_LOGS=true` — Split logs to `logs/frontend/*`
 
 ---
 

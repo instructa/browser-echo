@@ -62,6 +62,8 @@ interface BrowserEchoNuxtOptions {
   tag?: string;                      // default: '[browser]'
   batch?: { size?: number; interval?: number }; // default: 20 / 300ms
   stackMode?: 'full' | 'condensed' | 'none';    // default: 'condensed'
+  // Opt-in network capture (fetch/XHR/WS)
+  networkLogs?: { enabled?: boolean; captureFull?: boolean };
 }
 ```
 
@@ -114,7 +116,7 @@ Discovery order:
 
 ### Environment Variables
 
-- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Set MCP server URL (base URL is derived automatically)
+- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Set MCP server URL (base URL is derived automatically). When set, the handler forwards; terminal printing is suppressed unless explicitly disabled.
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Force suppress terminal output
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=0` — Force show terminal output even when MCP is active
 

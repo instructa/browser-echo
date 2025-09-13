@@ -3,7 +3,7 @@ import { defineEventHandler, readBody, setResponseStatus } from 'h3';
 // Simplified: resolve MCP from project-local JSON once; no fallback
 
 type Level = 'log' | 'info' | 'warn' | 'error' | 'debug';
-type Entry = { level: Level | string; text: string; time?: number; stack?: string; source?: string; };
+type Entry = { level: Level | string; text: string; time?: number; stack?: string; source?: string; tag?: string };
 type Payload = { sessionId?: string; entries: Entry[] };
 
 export default defineEventHandler(async (event) => {
@@ -33,13 +33,13 @@ export default defineEventHandler(async (event) => {
     } catch {}
   }
 
-  // Suppress when forwarding active
-  const shouldPrint = !mcp.url;
+  // Suppress only when explicitly configured via env var
+  const shouldPrint = !process.env.BROWSER_ECHO_MCP_URL;
 
   const sid = (payload.sessionId ?? 'anon').slice(0, 8);
   for (const entry of payload.entries) {
     const level = norm(entry.level);
-    let line = `[browser] [${sid}] ${level.toUpperCase()}: ${entry.text}`;
+    let line = `${entry.tag || '[browser]'} [${sid}] ${level.toUpperCase()}: ${entry.text}`;
     if (entry.source) line += ` (${entry.source})`;
     if (shouldPrint) print(level, color(level, line));
     if (entry.stack && shouldPrint) print(level, dim(indent(entry.stack, '    ')));

@@ -69,6 +69,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(<Root />);
 
 You need a development server endpoint that accepts POST requests at `/__client-logs` and prints the received logs to your terminal. The React provider only handles the client side.
 
+Note: Network capture (fetch/XHR/WS) is available via `@browser-echo/core` and framework providers (Vite, Next, Nuxt). This React (non-Vite) package does not inject network capture on its own.
+
 Example Express.js endpoint:
 
 ```js

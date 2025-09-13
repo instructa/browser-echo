@@ -7,4 +7,5 @@ export interface InitBrowserEchoOptions {
   tag?: string;
   batch?: { size?: number; interval?: number };
   stackMode?: 'full' | 'condensed' | 'none';
+  networkLogs?: { enabled?: boolean; captureFull?: boolean };
 }

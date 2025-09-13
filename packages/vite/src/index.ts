@@ -18,6 +18,7 @@ export interface BrowserLogsToTerminalOptions {
   truncate?: number;
   fileLog?: { enabled?: boolean; dir?: string };
   mcp?: { url?: string; routeLogs?: `/${string}`; suppressTerminal?: boolean; headers?: Record<string,string> };
+  networkLogs?: { enabled?: boolean; captureFull?: boolean };
 }
 
 type ResolvedOptions = Required<Omit<BrowserLogsToTerminalOptions, 'batch' | 'fileLog' | 'mcp'>> & {
@@ -39,7 +40,8 @@ const DEFAULTS: ResolvedOptions = {
   batch: { size: 20, interval: 300 },
   truncate: 10_000,
   fileLog: { enabled: false, dir: 'logs/frontend' },
-  mcp: { url: '', routeLogs: '/__client-logs', suppressTerminal: true, headers: {}, suppressProvided: false }
+  mcp: { url: '', routeLogs: '/__client-logs', suppressTerminal: true, headers: {}, suppressProvided: false },
+  networkLogs: { enabled: true, captureFull: false }
 };
 
 export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): any {
@@ -168,8 +170,7 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
     resolvedIngest = '';
   }
 
-  // Resolve once at startup
-  resolveOnce();
+  // Defer resolution until needed to avoid probing during startup
 
   server.middlewares.use(options.route, (req: import('http').IncomingMessage, res: import('http').ServerResponse, next: Function) => {
     if (req.method !== 'POST') return next();
@@ -183,6 +184,8 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
       // Mirror to MCP server if configured
       let targetIngest = resolvedIngest || '';
       if (!targetIngest) {
+        // Only attempt discovery when configured explicitly via .browser-echo-mcp.json
+        // Avoid probing default dev ports implicitly
         try { await resolveOnce(); } catch {}
         targetIngest = resolvedIngest || '';
       }
@@ -205,10 +208,11 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
       const sid = (payload.sessionId ?? 'anon').slice(0, 8);
       for (const entry of payload.entries) {
         const level = normalizeLevel(entry.level);
+        const tag = entry.tag || options.tag;
         const truncated = typeof entry.text === 'string' && entry.text.length > options.truncate
           ? entry.text.slice(0, options.truncate) + '… (truncated)'
           : entry.text;
-        let line = `${options.tag} [${sid}] ${level.toUpperCase()}: ${truncated}`;
+        let line = `${tag} [${sid}] ${level.toUpperCase()}: ${truncated}`;
         if (options.showSource && entry.source) line += ` (${entry.source})`;
         const colored = options.colors ? colorize(level, line) : line;
         if (shouldPrint) print(logger, level, colored);
@@ -274,7 +278,7 @@ function colorize(level: BrowserLogLevel, message: string): string {
   }
 }
 
-type ClientPayload = { sessionId?: string; entries: Array<{ level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; }>; };
+type ClientPayload = { sessionId?: string; entries: Array<{ level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; tag?: string; }>; };
 
 function makeClientModule(options: Required<BrowserLogsToTerminalOptions>) {
   const include = JSON.stringify(options.include);
@@ -283,6 +287,8 @@ function makeClientModule(options: Required<BrowserLogsToTerminalOptions>) {
   const tag = JSON.stringify(options.tag);
   const batchSize = String(options.batch?.size ?? 20);
   const batchInterval = String(options.batch?.interval ?? 300);
+  const netEnabled = !!options.networkLogs?.enabled;
+  const netFull = !!options.networkLogs?.captureFull;
   return `
 const __INSTALLED_KEY = '__vite_browser_echo_installed__';
 if (!window[__INSTALLED_KEY]) {
@@ -293,6 +299,8 @@ if (!window[__INSTALLED_KEY]) {
   const TAG = ${tag};
   const BATCH_SIZE = ${batchSize} | 0;
   const BATCH_INTERVAL = ${batchInterval} | 0;
+  const NET_ENABLED = ${JSON.stringify(netEnabled)};
+  const NET_FULL = ${JSON.stringify(netFull)};
   const SESSION = (function(){try{const a=new Uint8Array(8);crypto.getRandomValues(a);return Array.from(a).map(b=>b.toString(16).padStart(2,'0')).join('')}catch{return String(Math.random()).slice(2,10)}})();
   const queue = []; let timer = null;
   function enqueue(entry){ queue.push(entry); if (queue.length >= BATCH_SIZE) flush(); else if (!timer) timer = setTimeout(flush, BATCH_INTERVAL); }
@@ -316,6 +324,72 @@ if (!window[__INSTALLED_KEY]) {
     };
   }
   try { ORIGINAL['info']?.(TAG + ' forwarding console logs to ' + ROUTE + ' (session ' + SESSION + ')'); } catch {}
+  function normUrlStr(input){ try { if(typeof input==='string') return input; if (input && typeof input.url==='string') return input.url; if (input && input.href) return String(input.href||''); return '' } catch { return '' } }
+  if (NET_ENABLED) {
+    try {
+      const __origFetch = window.fetch && window.fetch.bind(window);
+      if (__origFetch) {
+        window.fetch = function(input, init){
+          const start = performance.now();
+          const method = (init && init.method ? String(init.method) : (input && input.method ? String(input.method) : 'GET')).toUpperCase();
+          const u = normUrlStr(input);
+          function emit(status, ok, extra){ const dur = Math.max(0, Math.round(performance.now()-start)); const st = isFinite(status) ? String(status) : 'ERR'; const line = '[NETWORK] ['+method+'] ['+(u||'(request)')+'] ['+st+'] ['+dur+'ms]'+(extra?(' '+extra):''); enqueue({ level: ok ? 'info' : 'warn', text: line, time: Date.now(), tag: '[network]' }); }
+          try {
+            const p = __origFetch(input, init);
+            return Promise.resolve(p).then(function(res){ try { if (NET_FULL) { let len = 0; try { const cl = res && res.headers && res.headers.get && res.headers.get('content-length'); len = Number(cl||0)|0; } catch {} emit(Number(res && res.status || 0)|0, !!(res && res.ok), '[size:'+len+']'); } else { emit(Number(res && res.status || 0)|0, !!(res && res.ok)); } } catch {} return res; }).catch(function(err){ emit(0,false, err && err.message ? String(err.message) : 'fetch failed'); throw err; });
+          } catch (err) { emit(0,false, err && err.message ? String(err.message) : 'fetch failed'); throw err; }
+        }
+      }
+    } catch {}
+    try {
+      const XHR = window.XMLHttpRequest;
+      if (XHR && XHR.prototype) {
+        const _open = XHR.prototype.open, _send = XHR.prototype.send;
+        XHR.prototype.open = function(method, url){ try{ this.__be_method__ = String(method||'GET').toUpperCase() }catch{} try{ this.__be_url__ = String(url||'') }catch{} return _open.apply(this, arguments); };
+        XHR.prototype.send = function(){ const start = performance.now(); const onEnd = ()=>{ try{ const dur = Math.max(0, Math.round(performance.now()-start)); const method = this.__be_method__ || 'GET'; const u = this.__be_url__ || ''; const status = Number(this.status||0)|0; const ok = status >= 200 && status < 400; const extra = NET_FULL ? ('ready:'+this.readyState) : ''; const line = '[NETWORK] ['+method+'] ['+u+'] ['+(status||'ERR')+'] ['+dur+'ms]'+(extra?(' '+extra):''); enqueue({ level: ok ? 'info' : 'warn', text: line, time: Date.now(), tag: '[network]' }); } catch {} try { this.removeEventListener('loadend', onEnd); this.removeEventListener('error', onEnd); this.removeEventListener('abort', onEnd); } catch {} };
+          try { this.addEventListener('loadend', onEnd); } catch {}
+          try { this.addEventListener('error', onEnd); } catch {}
+          try { this.addEventListener('abort', onEnd); } catch {}
+          return _send.apply(this, arguments);
+        }
+      }
+    } catch {}
+    try {
+      const WS = window.WebSocket;
+      if (WS) {
+        // @ts-ignore
+        window.WebSocket = new Proxy(WS, {
+          construct(Target, args) {
+            const url = normUrlStr(args?.[0]);
+            const start = performance.now();
+            // @ts-ignore
+            const socket = new Target(...args);
+            try {
+              socket.addEventListener('open', () => {
+                const dur = Math.max(0, Math.round(performance.now() - start));
+                const line = '[NETWORK] [WS OPEN] ['+(url||'(ws)')+'] ['+dur+'ms]';
+                enqueue({ level: 'info', text: line, time: Date.now(), tag: '[network]' });
+              });
+              socket.addEventListener('close', (ev) => {
+                const dur = Math.max(0, Math.round(performance.now() - start));
+                const code = Number(ev && ev.code || 0) | 0;
+                const reason = ev && ev.reason ? String(ev.reason) : '';
+                const extra = reason ? ('code:'+code+' reason:'+reason) : ('code:'+code);
+                const line = '[NETWORK] [WS CLOSE] ['+(url||'(ws)')+'] ['+dur+'ms] '+extra;
+                enqueue({ level: code === 1000 ? 'info' : 'warn', text: line, time: Date.now(), tag: '[network]' });
+              });
+              socket.addEventListener('error', () => {
+                const dur = Math.max(0, Math.round(performance.now() - start));
+                const line = '[NETWORK] [WS ERROR] ['+(url||'(ws)')+'] ['+dur+'ms]';
+                enqueue({ level: 'warn', text: line, time: Date.now(), tag: '[network]' });
+              });
+            } catch {}
+            return socket;
+          }
+        });
+      }
+    } catch {}
+  }
 }
 `;
 }

@@ -51,6 +51,7 @@ Stream browser `console.*` logs to your dev terminal and optional file logging.
 - Colorized terminal output
 - Optional file logging (Vite provider only)
 - Works great with AI assistants reading your terminal
+ - Optional network capture (opt‑in): fetch, XMLHttpRequest, WebSocket
 
 ## Production
 

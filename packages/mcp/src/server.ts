@@ -1,5 +1,5 @@
 import { createServer as createNodeServer } from 'node:http';
-import { writeFileSync, rmSync, renameSync } from 'node:fs';
+import { writeFileSync, rmSync, renameSync, appendFileSync, mkdirSync } from 'node:fs';
 import { join as joinPath } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -339,11 +339,30 @@ function writeProjectJson(host: string, port: number, route: `/${string}`) {
 /** Create log ingest routes that can be attached to any H3 app */
 function createLogIngestRoutes(store: LogStore, logsRoute: `/${string}`) {
   const router = createRouter();
+  const FILE_LOG_ENABLED = String(process.env.BROWSER_ECHO_FILE_LOG || '').toLowerCase() === 'true';
+  const SPLIT_LOGS = String(process.env.BROWSER_ECHO_SPLIT_LOGS || '').toLowerCase() === 'true';
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const FRONTEND_DIR = SPLIT_LOGS ? 'logs/frontend' : 'logs';
+  const FRONTEND_FILE = joinPath(FRONTEND_DIR, `dev-${stamp}.log`);
+  if (FILE_LOG_ENABLED) { try { mkdirSync(FRONTEND_DIR, { recursive: true }); } catch {} }
 
   // Log diagnostics (GET) → text/plain
   router.get(logsRoute, defineEventHandler(async (event) => {
-    const q = getQuery(event) as { session?: string };
-    const text = store.toText(q?.session ? String(q.session).slice(0, 8) : undefined);
+    const q = getQuery(event) as { session?: string, tag?: '[browser]' | '[network]' | '[worker]' };
+    let items = store.snapshot(q?.session ? String(q.session).slice(0, 8) : undefined);
+    if (q?.tag) items = items.filter(e => (e.tag || '[browser]') === q.tag);
+    const text = items.map((e) => {
+      const sid = (e.sessionId || 'anon').slice(0, 8);
+      const lvl = (e.level || 'log').toUpperCase();
+      const tag = e.tag || '[browser]';
+      let line = `${tag} [${sid}] ${lvl}: ${e.text}`;
+      if (e.source) line += ` (${e.source})`;
+      if (e.stack && e.stack.trim().length) {
+        const indented = e.stack.split(/\r?\n/g).map((l) => (l.length ? `    ${l}` : l)).join('\n');
+        return `${line}\n${indented}`;
+      }
+      return line;
+    }).join('\n');
     try {
       event.node.res.setHeader('content-type', 'text/plain; charset=utf-8');
       event.node.res.setHeader('cache-control', 'no-store');
@@ -361,17 +380,29 @@ function createLogIngestRoutes(store: LogStore, logsRoute: `/${string}`) {
         return 'invalid payload';
       }
       const sid = String(payload.sessionId ?? 'anon');
-      for (const entry of payload.entries as Array<{ level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; }>) {
+      for (const entry of payload.entries as Array<{ level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; tag?: string; }>) {
         const level = normalizeLevel(entry.level);
-        store.append({
+        const entryOut = {
           sessionId: sid,
           level,
           text: String(entry.text ?? ''),
           time: entry.time,
           source: entry.source,
           stack: entry.stack,
-          tag: '[browser]'
-        });
+          tag: entry.tag || '[browser]'
+        } as const;
+        store.append(entryOut);
+        if (FILE_LOG_ENABLED) {
+          const time = new Date().toISOString();
+          let line = `${entryOut.tag} [${sid.slice(0,8)}] ${entryOut.level.toUpperCase()}: ${entryOut.text}`;
+          if (entryOut.source) line += ` (${entryOut.source})`;
+          const payload = [`[${time}] ${line}`];
+          if (entryOut.stack && entryOut.stack.trim().length) {
+            const indented = entryOut.stack.split(/\r?\n/g).map(l => l ? `    ${l}` : l).join('\n');
+            payload.push(indented);
+          }
+          try { appendFileSync(FRONTEND_FILE, payload.join('\n') + '\n'); } catch {}
+        }
       }
       setResponseStatus(event, 204);
       return '';
