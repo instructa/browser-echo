@@ -223,7 +223,12 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
         if (options.fileLog.enabled) {
           const time = new Date().toISOString();
           const toFile = [`[${time}] ${line}`];
-          if (entry.stack && options.stackMode !== 'none') toFile.push(indent(entry.stack, '    '));
+          if (entry.stack && options.stackMode !== 'none') {
+            const stackLines = options.stackMode === 'full'
+              ? indent(entry.stack, '    ')
+              : `    ${(String(entry.stack).split(/\r?\n/g).find((l) => l.trim().length > 0) || '').trim()}`;
+            toFile.push(stackLines);
+          }
           try { appendFileSync(logFilePath, toFile.join('\n') + '\n'); } catch {}
         }
       }
