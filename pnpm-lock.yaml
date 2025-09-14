@@ -256,8 +256,8 @@ importers:
   packages/next:
     dependencies:
       '@browser-echo/core':
-        specifier: ^1.0.2
-        version: 1.0.2
+        specifier: workspace:*
+        version: link:../core
       next:
         specifier: '>=13.4.0'
         version: 15.4.6(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -278,8 +278,8 @@ importers:
   packages/nuxt:
     dependencies:
       '@browser-echo/core':
-        specifier: ^1.0.2
-        version: 1.0.2
+        specifier: workspace:*
+        version: link:../core
       '@nuxt/kit':
         specifier: '>=3.11.0'
         version: 4.0.3(magicast@0.3.5)
@@ -297,8 +297,8 @@ importers:
   packages/react:
     dependencies:
       '@browser-echo/core':
-        specifier: ^1.0.2
-        version: 1.0.2
+        specifier: workspace:*
+        version: link:../core
       react:
         specifier: '>=18.0.0'
         version: 19.1.0
