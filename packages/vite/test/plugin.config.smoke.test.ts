@@ -37,10 +37,10 @@ describe('Vite plugin configuration (smoke)', () => {
     const rid = (p as any).resolveId?.('virtual:browser-echo');
     const code: string = (p as any).load?.(rid);
     expect(typeof code).toBe('string');
-    // Default route and merged batch values appear in the virtual module
-    expect(code).toContain('const ROUTE = "/__client-logs"');
-    expect(code).toContain('const BATCH_SIZE = 99');
-    expect(code).toContain('const BATCH_INTERVAL = 300');
+    // Virtual module now calls initBrowserEcho with JSON payload
+    expect(code).toContain('initBrowserEcho(');
+    expect(code).toContain('"route":"/__client-logs"');
+    expect(code).toContain('"batch":{"size":99,"interval":300}');
   });
 
   it('forwards to MCP and suppresses terminal when MCP URL is set', async () => {
@@ -115,8 +115,9 @@ describe('Vite plugin configuration (smoke)', () => {
     const p = browserEcho({ include: ['error'], route: '/__client-logs' });
     const rid = (p as any).resolveId?.('virtual:browser-echo');
     const code: string = (p as any).load?.(rid);
-    expect(code).toContain('const INCLUDE = ["error"]');
-    expect(code).toContain('const ROUTE = "/__client-logs"');
+    expect(code).toContain('initBrowserEcho(');
+    expect(code).toContain('"include":["error"]');
+    expect(code).toContain('"route":"/__client-logs"');
     expect(code).not.toContain('BROWSER_ECHO_MCP');
   });
 });
