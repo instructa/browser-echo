@@ -3,6 +3,8 @@ import ansis from 'ansis';
 import type { BrowserLogLevel } from '@browser-echo/core';
 import { mkdirSync, appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join as joinPath, dirname } from 'node:path';
+import { createRequire } from 'node:module';
+const __require = createRequire(import.meta.url);
 
 export interface BrowserLogsToTerminalOptions {
   enabled?: boolean;
@@ -291,6 +293,18 @@ function colorize(level: BrowserLogLevel, message: string): string {
 
 type ClientPayload = { sessionId?: string; entries: Array<{ level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; tag?: string; }>; };
 
+function resolveCoreEntry(): string {
+  try {
+    const p = __require.resolve('@browser-echo/core/dist/index.mjs');
+    return '/@fs/' + p.replace(/\\/g, '/');
+  } catch {}
+  try {
+    const p = __require.resolve('@browser-echo/core');
+    return '/@fs/' + p.replace(/\\/g, '/');
+  } catch {}
+  return '';
+}
+
 function makeClientModule(options: Required<BrowserLogsToTerminalOptions>) {
   const payload = {
     route: options.route,
@@ -301,8 +315,12 @@ function makeClientModule(options: Required<BrowserLogsToTerminalOptions>) {
     stackMode: options.stackMode,
     networkLogs: options.networkLogs,
   };
+  const coreEntry = resolveCoreEntry();
+  const importLine = coreEntry
+    ? `import { initBrowserEcho } from '${coreEntry}';`
+    : `import { initBrowserEcho } from '@browser-echo/core';`;
   const code = [
-    `import { initBrowserEcho } from '@browser-echo/core';`,
+    importLine,
     `if (typeof window !== 'undefined') {`,
     `  initBrowserEcho(${JSON.stringify(payload)});`,
     `}`
