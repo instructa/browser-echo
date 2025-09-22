@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - 2025-09-XX
+## [1.1.0] - 2025-09-22
 
 ### Added
 - **Network Logs (opt-in)**: Capture fetch, XMLHttpRequest, and WebSocket as `[network]` entries alongside console logs. Disabled by default; enable via `networkLogs.enabled: true` (Vite/Next/Nuxt/Core).
@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed protocol from network log text. Format now: `[NETWORK] [METHOD] [URL] [STATUS] [DURATION ms]` and WS events `[WS OPEN/CLOSE/ERROR]`.
 - Next/Nuxt handlers now suppress terminal only when `BROWSER_ECHO_MCP_URL` is set.
 
-## [1.0.2] - 2025-09-XX
+## [1.0.2] - 2025-09-13
 
 ### Fixed
 - **File Logging Stack Mode**: Fixed file logging to properly respect `stackMode` configuration, ensuring that both `full` and `condensed` stack modes work correctly when writing logs to files
