@@ -59,6 +59,18 @@ interface BrowserEchoScriptProps {
   showSource?: boolean;              // default: true (when available)
   // batching
   batch?: { size?: number; interval?: number }; // default: 20 / 300ms
+  // Opt-in network capture (fetch/XHR/WS)
+  networkLogs?: {
+    enabled?: boolean;
+    captureFull?: boolean;
+    bodies?: {
+      request?: boolean;
+      response?: boolean;
+      maxBytes?: number;                       // default 2048 bytes
+      allowContentTypes?: string[];            // default ['application/json','text/','application/x-www-form-urlencoded']
+      prettyJson?: boolean;                    // default true
+    };
+  };
 }
 ```
 
@@ -100,6 +112,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             stackMode="condensed"
             showSource={true}
             batch={{ size: 10, interval: 500 }}
+            networkLogs={{
+              enabled: true,
+              bodies: { request: true, response: true, maxBytes: 2048 }
+            }}
           />
         )}
       </head>
@@ -202,7 +218,7 @@ Discovery order:
 
 ### Environment Variables
 
-- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Set MCP server URL (base URL is derived automatically)
+- `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Set MCP server URL (base URL is derived automatically). When set, the route will forward; terminal printing is suppressed unless explicitly disabled.
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Force suppress terminal output
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=0` — Force show terminal output even when MCP is active
 

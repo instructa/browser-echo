@@ -3,6 +3,8 @@ import ansis from 'ansis';
 import type { BrowserLogLevel } from '@browser-echo/core';
 import { mkdirSync, appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join as joinPath, dirname } from 'node:path';
+import { createRequire } from 'node:module';
+const __require = createRequire(import.meta.url);
 
 export interface BrowserLogsToTerminalOptions {
   enabled?: boolean;
@@ -16,8 +18,19 @@ export interface BrowserLogsToTerminalOptions {
   stackMode?: 'none' | 'condensed' | 'full';
   batch?: { size?: number; interval?: number };
   truncate?: number;
-  fileLog?: { enabled?: boolean; dir?: string };
+  fileLog?: { enabled?: boolean; dir?: string; split?: boolean };
   mcp?: { url?: string; routeLogs?: `/${string}`; suppressTerminal?: boolean; headers?: Record<string,string> };
+  networkLogs?: {
+    enabled?: boolean;
+    captureFull?: boolean;
+    bodies?: {
+      request?: boolean;
+      response?: boolean;
+      maxBytes?: number;
+      allowContentTypes?: string[];
+      prettyJson?: boolean;
+    };
+  };
 }
 
 type ResolvedOptions = Required<Omit<BrowserLogsToTerminalOptions, 'batch' | 'fileLog' | 'mcp'>> & {
@@ -38,8 +51,9 @@ const DEFAULTS: ResolvedOptions = {
   stackMode: 'condensed',
   batch: { size: 20, interval: 300 },
   truncate: 10_000,
-  fileLog: { enabled: false, dir: 'logs/frontend' },
-  mcp: { url: '', routeLogs: '/__client-logs', suppressTerminal: true, headers: {}, suppressProvided: false }
+  fileLog: { enabled: false, dir: 'logs/frontend', split: false },
+  mcp: { url: '', routeLogs: '/__client-logs', suppressTerminal: true, headers: {}, suppressProvided: false },
+  networkLogs: { enabled: true, captureFull: false }
 };
 
 export default function browserEcho(opts: BrowserLogsToTerminalOptions = {}): any {
@@ -94,8 +108,9 @@ function normalizeMcpBaseUrl(input: string | undefined): string {
 
 function attachMiddleware(server: any, options: ResolvedOptions) {
   const sessionStamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const logFilePath = joinPath(options.fileLog.dir, `dev-${sessionStamp}.log`);
-  if (options.fileLog.enabled) { try { mkdirSync(dirname(logFilePath), { recursive: true }); } catch {} }
+  const baseLogDir = options.fileLog.dir;
+  const defaultFilePath = joinPath(baseLogDir, `dev-${sessionStamp}.log`);
+  if (options.fileLog.enabled && !options.fileLog.split) { try { mkdirSync(dirname(defaultFilePath), { recursive: true }); } catch {} }
 
   // Simplified MCP ingest resolution: project JSON once; no fallback; retry on failure
   let resolvedBase = '';
@@ -121,24 +136,18 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
 
   function readProjectJson(): { url: string; route?: `/${string}` } | null {
     try {
-      let dir = process.cwd();
-      for (let depth = 0; depth < 10; depth++) {
-        const p = joinPath(dir, '.browser-echo-mcp.json');
-        if (existsSync(p)) {
-          const raw = readFileSync(p, 'utf-8');
-          let data: any;
-          try { data = JSON.parse(raw); }
-          catch (err: any) {
-            try { server.config.logger.warn(`${options.tag} failed to parse .browser-echo-mcp.json: ${err?.message || err}`); } catch {}
-            return null;
-          }
-          const url = (data?.url ? String(data.url) : '').replace(/\/$/, '');
-          const route = (data?.route ? String(data.route) : '/__client-logs') as `/${string}`;
-          if (url && /^(http:\/\/127\.0\.0\.1|http:\/\/localhost)/.test(url)) return { url, route };
+      const p = joinPath(process.cwd(), '.browser-echo-mcp.json');
+      if (existsSync(p)) {
+        const raw = readFileSync(p, 'utf-8');
+        let data: any;
+        try { data = JSON.parse(raw); }
+        catch (err: any) {
+          try { server.config.logger.warn(`${options.tag} failed to parse .browser-echo-mcp.json: ${err?.message || err}`); } catch {}
+          return null;
         }
-        const up = dirname(dir);
-        if (up === dir) break;
-        dir = up;
+        const url = (data?.url ? String(data.url) : '').replace(/\/$/, '');
+        const route = (data?.route ? String(data.route) : '/__client-logs') as `/${string}`;
+        if (url && /^(http:\/\/127\.0\.0\.1|http:\/\/localhost)/.test(url)) return { url, route };
       }
     } catch {}
     return null;
@@ -168,8 +177,7 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
     resolvedIngest = '';
   }
 
-  // Resolve once at startup
-  resolveOnce();
+  // Defer resolution until needed to avoid probing during startup
 
   server.middlewares.use(options.route, (req: import('http').IncomingMessage, res: import('http').ServerResponse, next: Function) => {
     if (req.method !== 'POST') return next();
@@ -183,6 +191,8 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
       // Mirror to MCP server if configured
       let targetIngest = resolvedIngest || '';
       if (!targetIngest) {
+        // Only attempt discovery when configured explicitly via .browser-echo-mcp.json
+        // Avoid probing default dev ports implicitly
         try { await resolveOnce(); } catch {}
         targetIngest = resolvedIngest || '';
       }
@@ -205,10 +215,11 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
       const sid = (payload.sessionId ?? 'anon').slice(0, 8);
       for (const entry of payload.entries) {
         const level = normalizeLevel(entry.level);
+        const tag = entry.tag || options.tag;
         const truncated = typeof entry.text === 'string' && entry.text.length > options.truncate
-          ? entry.text.slice(0, options.truncate) + '… (truncated)'
+          ? entry.text.slice(0, options.truncate) + '... (truncated)'
           : entry.text;
-        let line = `${options.tag} [${sid}] ${level.toUpperCase()}: ${truncated}`;
+        let line = `${tag} [${sid}] ${level.toUpperCase()}: ${truncated}`;
         if (options.showSource && entry.source) line += ` (${entry.source})`;
         const colored = options.colors ? colorize(level, line) : line;
         if (shouldPrint) print(logger, level, colored);
@@ -229,7 +240,13 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
               : `    ${(String(entry.stack).split(/\r?\n/g).find((l) => l.trim().length > 0) || '').trim()}`;
             toFile.push(stackLines);
           }
-          try { appendFileSync(logFilePath, toFile.join('\n') + '\n'); } catch {}
+          let outPath = defaultFilePath;
+          if (options.fileLog.split) {
+            const tagKey = String(tag || '[browser]').replace(/^[\[]|[\]]$/g, '').toLowerCase().replace(/\s+/g, '-');
+            outPath = joinPath(baseLogDir, tagKey, `dev-${sessionStamp}.log`);
+            try { mkdirSync(dirname(outPath), { recursive: true }); } catch {}
+          }
+          try { appendFileSync(outPath, toFile.join('\n') + '\n'); } catch {}
         }
       }
       res.statusCode = 204; res.end();
@@ -274,48 +291,39 @@ function colorize(level: BrowserLogLevel, message: string): string {
   }
 }
 
-type ClientPayload = { sessionId?: string; entries: Array<{ level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; }>; };
+type ClientPayload = { sessionId?: string; entries: Array<{ level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; tag?: string; }>; };
+
+function resolveCoreEntry(): string {
+  try {
+    const p = __require.resolve('@browser-echo/core/dist/index.mjs');
+    return '/@fs/' + p.replace(/\\/g, '/');
+  } catch {}
+  try {
+    const p = __require.resolve('@browser-echo/core');
+    return '/@fs/' + p.replace(/\\/g, '/');
+  } catch {}
+  return '';
+}
 
 function makeClientModule(options: Required<BrowserLogsToTerminalOptions>) {
-  const include = JSON.stringify(options.include);
-  const preserve = JSON.stringify(options.preserveConsole);
-  const route = JSON.stringify(options.route);
-  const tag = JSON.stringify(options.tag);
-  const batchSize = String(options.batch?.size ?? 20);
-  const batchInterval = String(options.batch?.interval ?? 300);
-  return `
-const __INSTALLED_KEY = '__vite_browser_echo_installed__';
-if (!window[__INSTALLED_KEY]) {
-  window[__INSTALLED_KEY] = true;
-  const INCLUDE = ${include};
-  const PRESERVE = ${preserve};
-  const ROUTE = ${route};
-  const TAG = ${tag};
-  const BATCH_SIZE = ${batchSize} | 0;
-  const BATCH_INTERVAL = ${batchInterval} | 0;
-  const SESSION = (function(){try{const a=new Uint8Array(8);crypto.getRandomValues(a);return Array.from(a).map(b=>b.toString(16).padStart(2,'0')).join('')}catch{return String(Math.random()).slice(2,10)}})();
-  const queue = []; let timer = null;
-  function enqueue(entry){ queue.push(entry); if (queue.length >= BATCH_SIZE) flush(); else if (!timer) timer = setTimeout(flush, BATCH_INTERVAL); }
-  function flush(){ if (timer) { clearTimeout(timer); timer = null; } if (!queue.length) return;
-    const payload = JSON.stringify({ sessionId: SESSION, entries: queue.splice(0, queue.length) });
-    try { if (navigator.sendBeacon) { navigator.sendBeacon(ROUTE, new Blob([payload], {type:'application/json'})); } else { fetch(ROUTE, { method: 'POST', headers:{'content-type':'application/json'}, body: payload, keepalive: true, cache: 'no-store' }).catch(()=>{}); } } catch {}
-  }
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
-  addEventListener('pagehide', flush); addEventListener('beforeunload', flush);
-  const ORIGINAL = {};
-  for (const level of INCLUDE) {
-    const orig = console[level] ? console[level].bind(console) : console.log.bind(console);
-    ORIGINAL[level] = orig;
-    console[level] = (...args) => {
-      const text = args.map((v)=>{try{if(typeof v==='string') return v; if(v instanceof Error) return (v.name||'Error')+': '+(v.message||''); const seen=new WeakSet(); return JSON.stringify(v,(k,val)=>{ if(typeof val==='bigint') return String(val)+'n'; if(typeof val==='function') return '[Function '+(val.name||'anonymous')+']'; if(val instanceof Error) return {name:val.name,message:val.message,stack:val.stack}; if(typeof val==='symbol') return val.toString(); if(val && typeof val==='object'){ if(seen.has(val)) return '[Circular]'; seen.add(val); } return val; }); } catch { try { return String(v) } catch { return '[Unserializable]' } }}).join(' ');
-      const stack = (new Error()).stack?.split('\\n').slice(1).filter(l=>!/virtual:browser-echo|enqueue|flush/.test(l)).join('\\n') || '';
-      const srcMatch = stack.match(/\\(?((?:file:\\/\\/|https?:\\/\\/|\\/)[^) \\n]+):(\\d+):(\\d+)\\)?/);
-      const source = srcMatch ? (srcMatch[1]+':'+srcMatch[2]+':'+srcMatch[3]) : '';
-      enqueue({ level, text, time: Date.now(), stack, source });
-      if (PRESERVE) { try { orig(...args) } catch {} }
-    };
-  }
-  try { ORIGINAL['info']?.(TAG + ' forwarding console logs to ' + ROUTE + ' (session ' + SESSION + ')'); } catch {}
-}
-`;
+  const payload = {
+    route: options.route,
+    include: options.include,
+    preserveConsole: options.preserveConsole,
+    tag: options.tag,
+    batch: options.batch,
+    stackMode: options.stackMode,
+    networkLogs: options.networkLogs,
+  };
+  const coreEntry = resolveCoreEntry();
+  const importLine = coreEntry
+    ? `import { initBrowserEcho } from '${coreEntry}';`
+    : `import { initBrowserEcho } from '@browser-echo/core';`;
+  const code = [
+    importLine,
+    `if (typeof window !== 'undefined') {`,
+    `  initBrowserEcho(${JSON.stringify(payload)});`,
+    `}`
+  ].join('\n');
+  return code;
 }

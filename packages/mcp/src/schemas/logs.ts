@@ -7,7 +7,8 @@ export const GetLogsArgs = {
   includeStack: z.boolean().optional().default(false).describe('Include stack traces in text view'),
   limit: z.number().int().min(1).max(5000).optional().describe('Max number of entries to return'),
   contains: z.string().optional().describe('Substring filter on entry.text'),
-  sinceMs: z.number().nonnegative().optional().describe('Only entries with time >= sinceMs')
+  sinceMs: z.number().nonnegative().optional().describe('Only entries with time >= sinceMs'),
+  tag: z.enum(['[browser]','[network]','[worker]']).optional().describe('Filter by stream tag')
 } satisfies z.ZodRawShape;
 
 export const ClearLogsArgs = {

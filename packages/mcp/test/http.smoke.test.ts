@@ -37,13 +37,14 @@ describe('@browser-echo/mcp streamable HTTP transport (smoke)', () => {
   });
 
   it('ingests a browser log and shows in GET diagnostics', async () => {
-    const payload = { sessionId: 'feedf00d', entries: [{ level: 'warn', text: 'http smoke' }] };
+    const payload = { sessionId: 'feedf00d', entries: [{ level: 'warn', text: 'http smoke', tag: '[network]' }] };
     const ingest = await httpPost('/__client-logs', payload);
     expect(ingest.status).toBe(204);
 
     const diag = await httpGet('/__client-logs');
     expect(diag.status).toBe(200);
     const body = await diag.text();
+    expect(body).toContain('[network]');
     expect(body).toContain('http smoke');
   });
 

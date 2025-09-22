@@ -20,6 +20,8 @@ This package provides a Vite plugin that includes dev middleware and a virtual m
 - Colorized terminal output
 - Full stack trace support with multiple modes
 - Works with `index.html` or server-side rendered apps
+ - Optional network capture (opt-in): fetch, XMLHttpRequest, WebSocket
+ - Optional request/response body snippets (opt-in) with safe truncation
 
 ## Installation
 
@@ -131,7 +133,7 @@ interface BrowserEchoViteOptions {
   showSource?: boolean;              // default: true
   batch?: { size?: number; interval?: number }; // default: 20 / 300ms
   truncate?: number;                 // default: 10_000 chars
-  fileLog?: { enabled?: boolean; dir?: string }; // default: disabled
+  fileLog?: { enabled?: boolean; dir?: string; split?: boolean }; // default: disabled
   mcp?: { 
     url?: string;                    // MCP server base URL (auto-discovered if not set)
     routeLogs?: `/${string}`;        // MCP logs route (default: '/__client-logs')
@@ -140,6 +142,17 @@ interface BrowserEchoViteOptions {
   };
   discoverMcp?: boolean;             // Enable MCP auto-discovery (default: true)
   discoveryRefreshMs?: number;       // Discovery refresh interval (default: 30000)
+  networkLogs?: {
+    enabled?: boolean;
+    captureFull?: boolean;
+    bodies?: {
+      request?: boolean;
+      response?: boolean;
+      maxBytes?: number;                       // default 2048 bytes
+      allowContentTypes?: string[];            // default ['application/json','text/','application/x-www-form-urlencoded']
+      prettyJson?: boolean;                    // default true
+    };
+  }; // default disabled
 }
 ```
 
@@ -170,6 +183,31 @@ browserEcho({
 })
 ```
 
+### Network body snippets (opt-in)
+
+```ts
+browserEcho({
+  networkLogs: {
+    enabled: true,
+    bodies: {
+      request: true,
+      response: true,
+      maxBytes: 2048,
+      allowContentTypes: ['application/json','text/','application/x-www-form-urlencoded'],
+      prettyJson: true
+    }
+  }
+})
+```
+
+Output example:
+
+```
+[NETWORK] [POST] [/api/users] [200] [18ms]
+    req: {"name":"Ada"}
+    res: { "id": 1, "name": "Ada" }
+```
+
 ### Disable MCP
 
 ```ts
@@ -184,6 +222,8 @@ browserEcho({
 - `BROWSER_ECHO_MCP_URL=http://127.0.0.1:5179/mcp` — Set MCP server URL
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=1` — Force suppress terminal output
 - `BROWSER_ECHO_SUPPRESS_TERMINAL=0` — Force show terminal output
+ - `BROWSER_ECHO_FILE_LOG=true` — Enable MCP-side file logging (ingest server)
+ - `BROWSER_ECHO_SPLIT_LOGS=true` — Split logs into logs/frontend vs combined
 
 #### Discovery behavior
 
@@ -201,6 +241,26 @@ browserEcho({
   }
 })
 ```
+
+### Split file logs by tag
+
+Write separate files under per-tag subdirectories (e.g. `logs/network/dev-*.log`):
+
+```ts
+browserEcho({
+  fileLog: {
+    enabled: true,
+    dir: 'logs',
+    split: true
+  },
+  networkLogs: { enabled: true }
+})
+```
+
+This produces, for example:
+- `logs/browser/dev-YYYY-MM-DDTHH-MM-SS.log`
+- `logs/network/dev-YYYY-MM-DDTHH-MM-SS.log`
+- `logs/worker/dev-YYYY-MM-DDTHH-MM-SS.log`
 
 ## How it works
 

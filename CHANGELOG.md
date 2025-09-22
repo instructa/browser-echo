@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-09-XX
+
+### Added
+- **Network Logs (opt-in)**: Capture fetch, XMLHttpRequest, and WebSocket as `[network]` entries alongside console logs. Disabled by default; enable via `networkLogs.enabled: true` (Vite/Next/Nuxt/Core).
+- **Tag Filtering**: `get_logs({ tag })` and diagnostics `GET /__client-logs?tag=...` to filter by stream tag (`[browser]`, `[network]`, `[worker]`).
+- **Worker Runtime (internal)**: Dev-only worker console capture runtime available in core (not exported publicly by default).
+- **MCP File Logging (opt-in)**: Enable ingest-side file logging with `BROWSER_ECHO_FILE_LOG=true` and optional split via `BROWSER_ECHO_SPLIT_LOGS=true`.
+
+### Changed
+- Removed protocol from network log text. Format now: `[NETWORK] [METHOD] [URL] [STATUS] [DURATION ms]` and WS events `[WS OPEN/CLOSE/ERROR]`.
+- Next/Nuxt handlers now suppress terminal only when `BROWSER_ECHO_MCP_URL` is set.
+
 ## [1.0.2] - 2025-09-XX
 
 ### Fixed
