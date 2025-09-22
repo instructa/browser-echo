@@ -402,10 +402,6 @@ async function publishPackages() {
     // Update workspace dependencies to use published versions
     updateWorkspaceDependencies(updatedPackages)
 
-    // Ensure lockfile matches updated manifests before committing/tagging
-    console.log('🔒 Updating pnpm-lock.yaml to match manifests...')
-    run('pnpm install --no-frozen-lockfile', rootPath)
-
     // Create git commit and tag if not skipped
     if (!skipGit && newVersion) {
       createGitCommitAndTag(newVersion, isAlpha)

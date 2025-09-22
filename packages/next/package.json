@@ -41,7 +41,7 @@
     "react-dom": ">=18.0.0"
   },
   "dependencies": {
-    "@browser-echo/core": "^1.1.0"
+    "@browser-echo/core": "workspace:*"
   },
   "scripts": {
     "build": "unbuild",
