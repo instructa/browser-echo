@@ -28,7 +28,7 @@
     "citty": "^0.1.6",
     "h3": "^1.13.0",
     "zod": "^4.0.17",
-    "@modelcontextprotocol/sdk": "^1.17.2"
+    "@modelcontextprotocol/sdk": "^1.26.0"
   },
   "devDependencies": {
     "typescript": "^5.9.2",
