@@ -4,6 +4,7 @@ export default defineBuildConfig({
   entries: [
     './src/index',
     './src/client',
+    './src/server',
     './src/types',
     './src/worker'
   ],

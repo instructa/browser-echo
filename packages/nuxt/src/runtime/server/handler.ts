@@ -1,6 +1,5 @@
 import { defineEventHandler, readBody, setResponseStatus } from 'h3';
-
-// Simplified: resolve MCP from project-local JSON once; no fallback
+import { forwardBrowserEchoPayload, hasExplicitMcpUrl } from '@browser-echo/core/server';
 
 type Level = 'log' | 'info' | 'warn' | 'error' | 'debug';
 type Entry = { level: Level | string; text: string; time?: number; stack?: string; source?: string; tag?: string };
@@ -15,25 +14,10 @@ export default defineEventHandler(async (event) => {
     setResponseStatus(event, 400); return 'invalid payload';
   }
 
-  // Resolve MCP once: project JSON only (no fallback)
-  const mcp = await __resolveMcpFromProjectNuxt();
-
-  // Forward to MCP server if available (fire-and-forget)
-  if (mcp.url) {
-    try {
-      const route = (mcp.routeLogs as `/${string}`) || '/__client-logs';
-      const headers: Record<string,string> = { 'content-type': 'application/json' };
-      await fetch(`${mcp.url}${route}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-        cache: 'no-store',
-      }).catch(() => undefined);
-    } catch {}
-  }
+  await forwardBrowserEchoPayload(payload);
 
   // Suppress only when explicitly configured via env var
-  const shouldPrint = !process.env.BROWSER_ECHO_MCP_URL;
+  const shouldPrint = !hasExplicitMcpUrl();
 
   const sid = (payload.sessionId ?? 'anon').slice(0, 8);
   for (const entry of payload.entries) {
@@ -74,26 +58,3 @@ function color(level: Level, msg: string) {
   }
 }
 function dim(s: string) { return c.dim + s + c.reset; }
-
-async function __resolveMcpFromProjectNuxt(): Promise<{ url: string; routeLogs?: `/${string}` }> {
-  try {
-    const { readFileSync, existsSync } = await import('node:fs');
-    const { join, dirname } = await import('node:path');
-    let dir = process.cwd();
-    for (let depth = 0; depth < 10; depth++) {
-      const p = join(dir, '.browser-echo-mcp.json');
-      if (existsSync(p)) {
-        const raw = readFileSync(p, 'utf-8');
-        const data = JSON.parse(raw);
-        const base = (data?.url ? String(data.url) : '').replace(/\/$/, '').replace(/\/mcp$/i, '');
-        if (!/^(http:\/\/127\.0\.0\.1|http:\/\/localhost)/.test(base)) break;
-        const routeLogs = (data?.route ? String(data.route) as `/${string}` : '/__client-logs');
-        if (base) return { url: base, routeLogs };
-      }
-      const up = dirname(dir);
-      if (up === dir) break;
-      dir = up;
-    }
-  } catch {}
-  return { url: '' } as any;
-}

@@ -87,7 +87,11 @@ it('does not fall back to 5179; prints when no project JSON present (dev only)',
 
 it('walks up directories to find project-local discovery file', async () => {
   const REAL_FETCH = globalThis.fetch as any;
-  globalThis.fetch = vi.fn(async () => ({ ok: true } as any)) as any;
+  const calls: string[] = [];
+  globalThis.fetch = vi.fn(async (url: any) => {
+    calls.push(String(url));
+    return { ok: true } as any;
+  }) as any;
   const oldCwd = process.cwd();
   const base = mkdtempSync(join(tmpdir(), 'be-nuxt-walk-'));
   const sub = join(base, 'a', 'b');
@@ -102,9 +106,46 @@ it('walks up directories to find project-local discovery file', async () => {
     const res: any = await mod.default(e);
     expect(e.status).toBe(204);
     expect(res).toBe('');
-    // if forwarding happened, no warn printed
+    expect(calls.some((u) => u === 'http://127.0.0.1:59999/__client-logs')).toBe(true);
+  } finally {
+    process.chdir(oldCwd);
+    try { rmSync(base, { recursive: true, force: true }); } catch {}
+    globalThis.fetch = REAL_FETCH;
+  }
+});
+
+it('times out stale MCP discovery and still returns 204', async () => {
+  const REAL_FETCH = globalThis.fetch as any;
+  let aborted = false;
+  globalThis.fetch = vi.fn((_url: any, init: any) => new Promise((_resolve, reject) => {
+    const signal = init?.signal as AbortSignal | undefined;
+    if (!signal) {
+      reject(new Error('missing signal'));
+      return;
+    }
+    signal.addEventListener('abort', () => {
+      aborted = true;
+      reject(new Error('aborted'));
+    }, { once: true });
+  })) as any;
+  const oldCwd = process.cwd();
+  const base = mkdtempSync(join(tmpdir(), 'be-nuxt-stale-'));
+  try {
+    writeFileSync(join(base, '.browser-echo-mcp.json'), JSON.stringify({ url: 'http://127.0.0.1:59996', route: '/__client-logs', timestamp: Date.now() }));
+    process.chdir(base);
+    vi.resetModules();
+    const mod = await import('../src/runtime/server/handler');
+    const e: any = {};
+    (await vi.importMock('h3') as any).readBody = async () => ({ sessionId: 'abcdef12', entries: [{ level: 'warn', text: 'still prints' }] });
     const w = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    expect(w).not.toHaveBeenCalled();
+    const started = Date.now();
+    const res: any = await mod.default(e);
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(e.status).toBe(204);
+    expect(res).toBe('');
+    expect(aborted).toBe(true);
+    expect(w).toHaveBeenCalled();
+    w.mockRestore();
   } finally {
     process.chdir(oldCwd);
     try { rmSync(base, { recursive: true, force: true }); } catch {}

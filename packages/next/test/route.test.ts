@@ -140,6 +140,43 @@ it('walks up directories to find discovery file and forwards', async () => {
   }
 });
 
+it('times out stale MCP discovery and still returns 204', async () => {
+  const REAL_FETCH = globalThis.fetch as any;
+  let aborted = false;
+  globalThis.fetch = vi.fn((_url: any, init: any) => new Promise((_resolve, reject) => {
+    const signal = init?.signal as AbortSignal | undefined;
+    if (!signal) {
+      reject(new Error('missing signal'));
+      return;
+    }
+    signal.addEventListener('abort', () => {
+      aborted = true;
+      reject(new Error('aborted'));
+    }, { once: true });
+  })) as any;
+  const oldCwd = process.cwd();
+  const base = mkdtempSync(join(tmpdir(), 'be-next-stale-'));
+  try {
+    writeFileSync(join(base, '.browser-echo-mcp.json'), JSON.stringify({ url: 'http://127.0.0.1:59997', route: '/__client-logs', timestamp: Date.now() }));
+    process.chdir(base);
+    vi.resetModules();
+    const mod = await import('../src/route');
+    const w = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const req: any = { json: async () => ({ sessionId: 'stale123', entries: [{ level: 'warn', text: 'still prints' }] }) };
+    const started = Date.now();
+    const res: any = await mod.POST(req);
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect((res as any).status).toBe(204);
+    expect(aborted).toBe(true);
+    expect(w).toHaveBeenCalled();
+    w.mockRestore();
+  } finally {
+    process.chdir(oldCwd);
+    try { rmSync(base, { recursive: true, force: true }); } catch {}
+    globalThis.fetch = REAL_FETCH;
+  }
+});
+
 it('ignores malformed discovery file gracefully and keeps printing', async () => {
   const oldCwd = process.cwd();
   const base = mkdtempSync(join(tmpdir(), 'be-next-bad-'));

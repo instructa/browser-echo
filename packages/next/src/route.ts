@@ -1,7 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-
-// Simplified: resolve MCP from project-local JSON once; no fallback
+import { forwardBrowserEchoPayload, hasExplicitMcpUrl } from '@browser-echo/core/server';
 
 export type BrowserLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
 type Entry = { level: BrowserLogLevel | string; text: string; time?: number; stack?: string; source?: string; tag?: string };
@@ -16,33 +15,9 @@ export async function POST(req: NextRequest) {
   catch { return new NextResponse('invalid JSON', { status: 400 }); }
   if (!payload || !Array.isArray(payload.entries)) return new NextResponse('invalid payload', { status: 400 });
 
-  // Resolve MCP once: project JSON only (no fallback)
-  const mcp = await __resolveMcpFromProject();
+  await forwardBrowserEchoPayload(payload);
 
-  // Forward to MCP server if available (fire-and-forget)
-  if (mcp.url) {
-    try {
-      const route = (mcp.routeLogs as `/${string}`) || '/__client-logs';
-      const headers: Record<string,string> = { 'content-type': 'application/json' };
-      await fetch(`${mcp.url}${route}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-        cache: 'no-store',
-      }).catch(() => undefined);
-    } catch {}
-  }
-
-  // Dynamically decide whether to print to terminal
-  // Only suppress when MCP URL is explicitly configured via env var
-  const envMcp = (() => {
-    const raw = process.env.BROWSER_ECHO_MCP_URL;
-    if (!raw) return '';
-    const s = String(raw).trim().toLowerCase();
-    if (!s || s === 'undefined' || s === 'null' || s === 'false' || s === '0') return '';
-    return String(raw).trim();
-  })();
-  const shouldPrint = !envMcp;
+  const shouldPrint = !hasExplicitMcpUrl();
 
   const sid = (payload.sessionId ?? 'anon').slice(0, 8);
   for (const entry of payload.entries) {
@@ -81,27 +56,3 @@ function color(level: BrowserLogLevel, msg: string) {
   }
 }
 function dim(s: string) { return c.dim + s + c.reset; }
-
-async function __resolveMcpFromProject(): Promise<{ url: string; routeLogs?: `/${string}` }> {
-  try {
-    const { readFileSync, existsSync } = await import('node:fs');
-    const { join, dirname } = await import('node:path');
-    let dir = process.cwd();
-    for (let depth = 0; depth < 10; depth++) {
-      const p = join(dir, '.browser-echo-mcp.json');
-      if (existsSync(p)) {
-        const raw = readFileSync(p, 'utf-8');
-        const data = JSON.parse(raw);
-        const rawUrl = (data?.url ? String(data.url) : '');
-        const base = rawUrl.replace(/\/$/, '').replace(/\/mcp$/i, '');
-        if (!/^(http:\/\/127\.0\.0\.1|http:\/\/localhost)/.test(base)) break;
-        const routeLogs = (data?.route ? String(data.route) : '/__client-logs') as `/${string}`;
-        if (base) return { url: base, routeLogs };
-      }
-      const up = dirname(dir);
-      if (up === dir) break;
-      dir = up;
-    }
-  } catch {}
-  return { url: '' } as any;
-}
