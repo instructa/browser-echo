@@ -23,13 +23,12 @@ export default defineEventHandler(async (event) => {
     try {
       const route = (mcp.routeLogs as `/${string}`) || '/__client-logs';
       const headers: Record<string,string> = { 'content-type': 'application/json' };
-      fetch(`${mcp.url}${route}`, {
+      await fetch(`${mcp.url}${route}`, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
-        keepalive: true,
         cache: 'no-store',
-      }).catch(() => void 0);
+      }).catch(() => undefined);
     } catch {}
   }
 
@@ -89,9 +88,7 @@ async function __resolveMcpFromProjectNuxt(): Promise<{ url: string; routeLogs?:
         const base = (data?.url ? String(data.url) : '').replace(/\/$/, '').replace(/\/mcp$/i, '');
         if (!/^(http:\/\/127\.0\.0\.1|http:\/\/localhost)/.test(base)) break;
         const routeLogs = (data?.route ? String(data.route) as `/${string}` : '/__client-logs');
-        if (base && await __pingHealthNuxt(`${base}/health`, 300)) {
-          return { url: base, routeLogs };
-        }
+        if (base) return { url: base, routeLogs };
       }
       const up = dirname(dir);
       if (up === dir) break;
@@ -99,16 +96,4 @@ async function __resolveMcpFromProjectNuxt(): Promise<{ url: string; routeLogs?:
     }
   } catch {}
   return { url: '' } as any;
-}
-
-async function __pingHealthNuxt(url: string, timeoutMs: number): Promise<boolean> {
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
-    const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' as any });
-    clearTimeout(t);
-    return res.ok;
-  } catch {
-    return false;
-  }
 }

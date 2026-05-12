@@ -8,7 +8,6 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { LogStore, normalizeLevel, type LogEntry } from './store';
 import { registerTools } from './tools';
 import { registerResources } from './resources';
-import { getPackageJson } from './utils';
 
 const cli = defineCommand({
   meta: {
@@ -86,9 +85,8 @@ export async function startMcpServer(options: {
     console.log('[browser-echo] External MCP server detected at', process.env.BROWSER_ECHO_MCP_URL);
     return;
   }
-  const pkg = getPackageJson();
-  const name = options.name || pkg?.name || 'Browser Echo Logs';
-  const ver = options.version || pkg?.version || '0.0.0';
+  const name = options.name || 'Browser Echo Logs';
+  const ver = options.version || version || '0.0.0';
   const mcp = new McpServer({ name, version: ver });
 
   // Initialize log store with specified or default buffer size

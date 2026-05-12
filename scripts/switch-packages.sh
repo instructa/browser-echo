@@ -16,7 +16,6 @@ EXAMPLES=(
   "example/next-app"
   "example/nuxt-app"
   "example/react-vite-app"
-  "example/tanstack-app"
   "example/vue-vite-app"
 )
 

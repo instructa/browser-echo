@@ -25,14 +25,14 @@
     "express": "^4 || ^5"
   },
   "dependencies": {
-    "citty": "^0.1.6",
-    "h3": "^1.13.0",
-    "zod": "^4.0.17",
-    "@modelcontextprotocol/sdk": "^1.17.2"
+    "@modelcontextprotocol/sdk": "1.26.0",
+    "citty": "0.1.6",
+    "h3": "1.15.9",
+    "zod": "4.4.3"
   },
   "devDependencies": {
-    "typescript": "^5.9.2",
-    "unbuild": "^3.6.1"
+    "typescript": "5.9.3",
+    "unbuild": "3.6.1"
   },
   "scripts": {
     "build": "unbuild && npm run chmod-run",

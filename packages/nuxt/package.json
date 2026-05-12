@@ -34,8 +34,8 @@
     "test": "vitest run packages/nuxt"
   },
   "devDependencies": {
-    "h3": "^1.15.4",
-    "typescript": "^5.5.4",
-    "unbuild": "^2.0.0"
+    "h3": "1.15.9",
+    "typescript": "5.9.3",
+    "unbuild": "2.0.0"
   }
 }
