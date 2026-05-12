@@ -1,3 +1,10 @@
 packages:
   - "packages/*"
   - "example/*"
+
+minimumReleaseAge: 10080
+minimumReleaseAgeStrict: true
+minimumReleaseAgeIgnoreMissingTime: false
+blockExoticSubdeps: true
+dangerouslyAllowAllBuilds: false
+savePrefix: ""

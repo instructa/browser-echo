@@ -1,4 +1,4 @@
-name: pkg-pr-new
+name: package-ci
 
 on:
   push:
@@ -7,25 +7,34 @@ on:
     tags:
       - "!**"
   pull_request:
+  workflow_dispatch:
+    inputs:
+      publish_preview:
+        description: "Publish pkg.pr.new preview packages"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
 
 jobs:
-  publish:
+  package-ci:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - run: corepack enable
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
-          cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install:packages
+        run: pnpm --filter './packages/*' install --frozen-lockfile --ignore-scripts
 
       - name: Build package
         run: pnpm build
@@ -38,6 +47,6 @@ jobs:
           find packages -name "package.json" | head -10
 
       - name: Publish preview packages
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_preview }}
         run: pnpm dlx pkg-pr-new publish './packages/*'
-
 
