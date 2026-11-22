@@ -68,7 +68,9 @@ describe('@browser-echo/mcp stdio transport (smoke)', () => {
   });
 
   it('clears logs via clear_logs', async () => {
-    const result = await client.callTool('clear_logs', { scope: 'all' });
+    const invalid = await client.callTool('clear_logs', { scope: 'unknown' });
+    expect(invalid.isError).toBe(true);
+    const result = await client.callTool('clear_logs', { scope: 'hard' });
     const msg = JSON.stringify(result);
     expect(msg).toContain('cleared');
   });
