@@ -1,3 +1,4 @@
+import { request } from 'node:http';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { startMcpServer } from '../src/index';
 
@@ -34,6 +35,31 @@ describe('@browser-echo/mcp streamable HTTP transport (smoke)', () => {
 
     const resNoSid = await httpGet('/mcp');
     expect(resNoSid.status).toBe(405);
+  });
+
+  it.each(['/health', '/__client-logs', '/mcp'])('rejects an unexpected Host before routing %s', async (path) => {
+    const status = await new Promise<number | undefined>((resolve, reject) => {
+      const req = request(`${BASE}${path}`, { headers: { host: `example.test:${PORT}` } }, (res) => {
+        res.resume();
+        resolve(res.statusCode);
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    expect(status).toBe(403);
+  });
+
+  it('checks Origin before parsing ingest bodies and permits the same HTTP origin', async () => {
+    const denied = await fetch(`${BASE}/__client-logs`, {
+      method: 'POST',
+      headers: { origin: 'http://example.test' },
+      body: 'invalid JSON',
+    });
+    expect(denied.status).toBe(403);
+    expect(denied.headers.get('access-control-allow-origin')).toBeNull();
+
+    const allowed = await httpGet('/health', { origin: BASE });
+    expect(allowed.status).toBe(200);
   });
 
   it('ingests a browser log and shows in GET diagnostics', async () => {

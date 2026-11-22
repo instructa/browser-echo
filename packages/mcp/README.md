@@ -318,6 +318,10 @@ In HTTP mode:
 - Full **Streamable HTTP** MCP endpoint and HTTP ingest endpoint run on the specified host/port
 - Console output: `MCP (Streamable HTTP) listening → http://127.0.0.1:<port>/mcp`
 
+Both HTTP listeners validate the Host against the bound address and port. Loopback binds accept local aliases, and wildcard binds accept the concrete destination IP and local aliases. Requests with an Origin must match the HTTP address used for the request. Native clients can omit Origin.
+
+An explicit LAN or wildcard bind exposes the listener to reachable peers. These checks do not authenticate clients.
+
 ### Custom Configuration
 
 ```bash
@@ -334,10 +338,10 @@ node packages/mcp/bin/cli.mjs --http --host 0.0.0.0 --port 5179
 
 ### Browser → Ingest (Recommended)
 
-Your framework packages automatically send logs to the ingest endpoint:
+Browser logs go to your framework's development route on the app origin. The framework forwards the payload to the MCP ingest endpoint:
 
 ```typescript
-// Browser automatically POSTs to ingest endpoint
+// Framework server forwards to the MCP ingest endpoint
 POST http://127.0.0.1:5179/__client-logs
 {
   "sessionId": "tab-123",
