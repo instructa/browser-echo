@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 
 import { createApp, createRouter, defineEventHandler, getQuery, readRawBody, setResponseStatus, toNodeListener } from 'h3';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { SUPPORTED_PROTOCOL_VERSIONS } from '@modelcontextprotocol/sdk/types.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
@@ -192,7 +193,7 @@ export async function startHttpServer(
         // Validate MCP-Protocol-Version if provided (allow missing for backwards-compat)
         try {
           const ver = String((event.node.req.headers['mcp-protocol-version'] as any) || '').trim();
-          if (ver && !['2025-06-18','2025-03-26','2024-11-05'].includes(ver)) {
+          if (ver && !SUPPORTED_PROTOCOL_VERSIONS.includes(ver)) {
             setResponseStatus(event, 400);
             try { event.node.res.setHeader('content-type','application/json'); } catch {}
             return JSON.stringify({ jsonrpc: '2.0', error: { code: -32600, message: 'Unsupported MCP-Protocol-Version' }, id: null });

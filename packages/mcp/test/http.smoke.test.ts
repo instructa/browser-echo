@@ -1,4 +1,6 @@
 import { request } from 'node:http';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { startMcpServer } from '../src/index';
 
@@ -72,6 +74,17 @@ describe('@browser-echo/mcp streamable HTTP transport (smoke)', () => {
     const body = await diag.text();
     expect(body).toContain('[network]');
     expect(body).toContain('http smoke');
+  });
+
+  it('serves tools using the negotiated SDK protocol version', async () => {
+    const client = new Client({ name: 'browser-echo-test', version: '1' });
+    try {
+      await client.connect(new StreamableHTTPClientTransport(new URL('/mcp', BASE)));
+      const result = await client.listTools();
+      expect(result.tools.map(tool => tool.name)).toContain('get_logs');
+    } finally {
+      await client.close();
+    }
   });
 
   it('returns 400 on invalid MCP-Protocol-Version header', async () => {
