@@ -50,6 +50,7 @@
     "test": "vitest run packages/next"
   },
   "devDependencies": {
+    "next": "16.4.1",
     "typescript": "5.9.3",
     "unbuild": "2.0.0"
   }
