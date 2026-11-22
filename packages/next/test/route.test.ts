@@ -1,8 +1,20 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, it, expect, vi } from 'vitest';
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { POST } from '../src/route';
+
+beforeEach(() => { vi.stubEnv('NODE_ENV', 'development'); });
+afterEach(() => { vi.unstubAllEnvs(); });
+
+it.each(['production', 'test'])('returns 404 before reading the body in %s', async (environment) => {
+  vi.stubEnv('NODE_ENV', environment);
+  const json = vi.fn();
+  const response = await POST({ json } as any);
+
+  expect(response.status).toBe(404);
+  expect(json).not.toHaveBeenCalled();
+});
 
 it('accepts payload and returns 204', async () => {
   const req: any = { json: async () => ({ sessionId: 'deadbeef', entries: [{ level: 'info', text: 'hi next' }] }) };

@@ -10,6 +10,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  if (process.env.NODE_ENV !== 'development') return new NextResponse(null, { status: 404 });
+
   let payload: Payload | null = null;
   try { payload = (await req.json()) as Payload; }
   catch { return new NextResponse('invalid JSON', { status: 400 }); }

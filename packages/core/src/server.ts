@@ -16,7 +16,10 @@ export function hasExplicitMcpUrl(value = process.env.BROWSER_ECHO_MCP_URL): boo
   return Boolean(normalized && !['undefined', 'null', 'false', '0'].includes(normalized));
 }
 
-export function resolveBrowserEchoMcpTarget(cwd = process.cwd()): BrowserEchoMcpTarget | null {
+export function resolveBrowserEchoMcpTarget(
+  cwd = process.cwd(),
+  { searchParents = true }: { searchParents?: boolean } = {},
+): BrowserEchoMcpTarget | null {
   try {
     let dir = cwd;
     for (let depth = 0; depth < 10; depth++) {
@@ -28,10 +31,11 @@ export function resolveBrowserEchoMcpTarget(cwd = process.cwd()): BrowserEchoMcp
 
         return {
           url,
-          routeLogs: normalizeMcpRoute(data?.route ?? data?.routeLogs),
+          routeLogs: normalizeMcpRoute(data?.route ?? data?.routeLogs, url),
         };
       }
 
+      if (!searchParents) break;
       const parent = dirname(dir);
       if (parent === dir) break;
       dir = parent;
@@ -54,7 +58,7 @@ export async function forwardBrowserEchoPayload(
   const target = resolveBrowserEchoMcpTarget(options.cwd);
   if (!target) return false;
 
-  return forwardToBrowserEchoMcp(target, payload, options);
+  return forwardToBrowserEchoMcp(target, payload, { ...options, redirect: 'error' });
 }
 
 export async function forwardToBrowserEchoMcp(
@@ -63,6 +67,7 @@ export async function forwardToBrowserEchoMcp(
   options: {
     fetchImpl?: typeof fetch;
     timeoutMs?: number;
+    redirect?: RequestRedirect;
   } = {},
 ): Promise<boolean> {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
@@ -75,6 +80,7 @@ export async function forwardToBrowserEchoMcp(
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
     cache: 'no-store' as RequestCache,
+    redirect: options.redirect,
   };
   const timeout = createTimeoutSignal(timeoutMs);
 
@@ -99,7 +105,7 @@ function normalizeLocalMcpUrl(value: unknown): string {
   try {
     const parsed = new URL(raw);
     if (parsed.protocol !== 'http:') return '';
-    if (!LOCAL_MCP_HOSTS.has(parsed.hostname)) return '';
+    if (!LOCAL_MCP_HOSTS.has(parsed.hostname) || parsed.username || parsed.password) return '';
 
     const path = parsed.pathname.replace(/\/+$/g, '');
     if (path && path !== '/mcp') return '';
@@ -113,11 +119,13 @@ function normalizeLocalMcpUrl(value: unknown): string {
   }
 }
 
-function normalizeMcpRoute(value: unknown): `/${string}` {
+function normalizeMcpRoute(value: unknown, origin: string): `/${string}` {
   if (typeof value !== 'string') return '/__client-logs';
   const route = value.trim();
   if (!route.startsWith('/') || route.startsWith('//') || route.includes('://')) return '/__client-logs';
-  return route as `/${string}`;
+  const parsed = new URL(route, origin);
+  if (parsed.origin !== origin || parsed.pathname.startsWith('//')) return '/__client-logs';
+  return (parsed.pathname + parsed.search) as `/${string}`;
 }
 
 function createTimeoutSignal(timeoutMs: number): { signal: AbortSignal; clear: () => void } {

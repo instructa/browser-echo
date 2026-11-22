@@ -1,7 +1,8 @@
 // Avoid exporting Vite types to prevent cross-version type mismatches in consumers
 import ansis from 'ansis';
 import type { BrowserLogLevel } from '@browser-echo/core';
-import { mkdirSync, appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { resolveBrowserEchoMcpTarget } from '@browser-echo/core/server';
+import { mkdirSync, appendFileSync } from 'node:fs';
 import { join as joinPath, dirname } from 'node:path';
 import { createRequire } from 'node:module';
 const __require = createRequire(import.meta.url);
@@ -112,8 +113,7 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
   const defaultFilePath = joinPath(baseLogDir, `dev-${sessionStamp}.log`);
   if (options.fileLog.enabled && !options.fileLog.split) { try { mkdirSync(dirname(defaultFilePath), { recursive: true }); } catch {} }
 
-  // Simplified MCP ingest resolution: project JSON once; no fallback; retry on failure
-  let resolvedBase = '';
+  // Resolve project discovery on demand and retry after a failed forward.
   let resolvedIngest = '';
   let lastAnnouncement = '';
 
@@ -124,56 +124,31 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
     }
   };
 
-  async function tryPingHealth(base: string, timeoutMs = 400): Promise<boolean> {
+  async function tryPingHealth(base: string, timeoutMs = 250): Promise<boolean> {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), timeoutMs);
-      const res = await fetch(`${base}/health`, { signal: ctrl.signal as any, cache: 'no-store' as any });
-      clearTimeout(t);
+      const res = await fetch(`${base}/health`, { signal: ctrl.signal, cache: 'no-store', redirect: 'error' });
       return !!res?.ok;
     } catch { return false; }
-  }
-
-  function readProjectJson(): { url: string; route?: `/${string}` } | null {
-    try {
-      const p = joinPath(process.cwd(), '.browser-echo-mcp.json');
-      if (existsSync(p)) {
-        const raw = readFileSync(p, 'utf-8');
-        let data: any;
-        try { data = JSON.parse(raw); }
-        catch (err: any) {
-          try { server.config.logger.warn(`${options.tag} failed to parse .browser-echo-mcp.json: ${err?.message || err}`); } catch {}
-          return null;
-        }
-        const url = (data?.url ? String(data.url) : '').replace(/\/$/, '');
-        const route = (data?.route ? String(data.route) : '/__client-logs') as `/${string}`;
-        if (url && /^(http:\/\/127\.0\.0\.1|http:\/\/localhost)/.test(url)) return { url, route };
-      }
-    } catch {}
-    return null;
+    finally { clearTimeout(timer); }
   }
 
   async function resolveOnce() {
     // Prefer explicit plugin option if provided
     if (options.mcp.url) {
       const base = String(options.mcp.url).replace(/\/$/, '').replace(/\/mcp$/i, '');
-      resolvedBase = base;
       resolvedIngest = `${base}${options.mcp.routeLogs}`;
       announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
       return;
     }
 
-    const cfg = readProjectJson();
-    if (cfg && cfg.url) {
-      const base = String(cfg.url).replace(/\/$/, '');
-      if (await tryPingHealth(base, 250)) {
-        resolvedBase = base;
-        resolvedIngest = `${base}${cfg.route || '/__client-logs'}`;
-        announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
-        return;
-      }
+    const cfg = resolveBrowserEchoMcpTarget(process.cwd(), { searchParents: false });
+    if (cfg && await tryPingHealth(cfg.url)) {
+      resolvedIngest = `${cfg.url}${cfg.routeLogs}`;
+      announce(`${options.tag} forwarding logs to MCP ingest at ${resolvedIngest}`);
+      return;
     }
-    resolvedBase = '';
     resolvedIngest = '';
   }
 
@@ -204,7 +179,8 @@ function attachMiddleware(server: any, options: ResolvedOptions) {
             headers: { 'content-type': 'application/json', ...options.mcp.headers },
             body: JSON.stringify(payload),
             keepalive: true,
-            cache: 'no-store'
+            cache: 'no-store',
+            redirect: options.mcp.url ? 'follow' : 'error'
           }).catch(() => { try { resolveOnce(); } catch {} });
         } catch {}
       }

@@ -1,8 +1,8 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { resolveBrowserEchoMcpTarget } from '../src/server';
+import { describe, expect, it, vi } from 'vitest';
+import { forwardBrowserEchoPayload, resolveBrowserEchoMcpTarget } from '../src/server';
 
 describe('server MCP discovery', () => {
   it('normalizes local MCP URLs and legacy routeLogs', () => {
@@ -22,11 +22,16 @@ describe('server MCP discovery', () => {
     }
   });
 
-  it('rejects non-local URLs', () => {
+  it.each([
+    'https://example.test/mcp',
+    'http://localhost.example.test/mcp',
+    'http://127.0.0.1.example.test/mcp',
+    'http://user@localhost/mcp',
+  ])('rejects an invalid discovery URL (%s)', (url) => {
     const dir = mkdtempSync(join(tmpdir(), 'be-core-remote-'));
     try {
       writeFileSync(join(dir, '.browser-echo-mcp.json'), JSON.stringify({
-        url: 'https://example.com/mcp',
+        url,
         route: '/__client-logs',
       }));
 
@@ -36,15 +41,34 @@ describe('server MCP discovery', () => {
     }
   });
 
-  it('defaults unsafe routes to the log endpoint', () => {
+  it.each([
+    '//example.test/path',
+    String.raw`/\example.test/path`,
+  ])('defaults unsafe routes to the log endpoint (%s)', (route) => {
     const dir = mkdtempSync(join(tmpdir(), 'be-core-route-'));
     try {
       writeFileSync(join(dir, '.browser-echo-mcp.json'), JSON.stringify({
         url: 'http://127.0.0.1:5179',
-        route: '//evil.test/path',
+        route,
       }));
 
       expect(resolveBrowserEchoMcpTarget(dir)?.routeLogs).toBe('/__client-logs');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('blocks redirects in automatic forwarding even without a compatible abort signal', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'be-core-redirect-'));
+    try {
+      writeFileSync(join(dir, '.browser-echo-mcp.json'), JSON.stringify({ url: 'http://localhost:5179' }));
+      const fetchImpl = vi.fn<typeof fetch>()
+        .mockRejectedValueOnce(new TypeError('Incompatible AbortSignal'))
+        .mockResolvedValueOnce({ ok: false } as Response);
+
+      expect(await forwardBrowserEchoPayload({}, { cwd: dir, fetchImpl })).toBe(false);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      for (const [, init] of fetchImpl.mock.calls) expect(init?.redirect).toBe('error');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
