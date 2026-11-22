@@ -35,7 +35,14 @@ describe('@browser-echo/mcp stdio prefers 5179 and writes project json to cwd', 
     const raw = readFileSync(disc, 'utf-8');
     const data = JSON.parse(raw);
     expect(String(data.url)).toMatch(/^http:\/\/127\.0\.0\.1:(\d{2,5})$/);
-    // No tmp discovery any more
+    const health = await fetch(`${data.url}/health`);
+    expect(health.status).toBe(200);
+    const denied = await fetch(`${data.url}${data.route}`, {
+      method: 'POST',
+      headers: { origin: 'null' },
+      body: 'invalid JSON',
+    });
+    expect(denied.status).toBe(403);
   });
 });
 

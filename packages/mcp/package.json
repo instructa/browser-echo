@@ -1,6 +1,6 @@
 {
   "name": "@browser-echo/mcp",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "private": false,
   "type": "module",
   "main": "dist/index.mjs",
@@ -25,10 +25,10 @@
     "express": "^4 || ^5"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.26.0",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "citty": "0.1.6",
     "h3": "1.15.9",
-    "zod": "4.4.3"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "typescript": "5.9.3",

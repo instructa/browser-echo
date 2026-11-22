@@ -1,10 +1,12 @@
-import { createServer as createNodeServer } from 'node:http';
+import { createServer as createNodeServer, type RequestListener } from 'node:http';
+import { isIP } from 'node:net';
 import { writeFileSync, rmSync, renameSync, appendFileSync, mkdirSync } from 'node:fs';
 import { join as joinPath } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import { createApp, createRouter, defineEventHandler, getQuery, readRawBody, setResponseStatus, toNodeListener } from 'h3';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { SUPPORTED_PROTOCOL_VERSIONS } from '@modelcontextprotocol/sdk/types.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
@@ -94,6 +96,43 @@ export async function stopServer(server: McpServer) {
   }
 }
 
+const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '[::1]'];
+
+function formatHttpHostname(host: string): string {
+  if (isIP(host) === 6) return new URL(`http://[${host.split('%')[0]}]`).hostname;
+  return host.toLowerCase();
+}
+
+function guardedHttpListener(host: string, listener: RequestListener): RequestListener {
+  const bindHost = formatHttpHostname(host);
+  const wildcard = bindHost === '0.0.0.0' || bindHost === '[::]';
+  const hosts = wildcard || LOOPBACK_HOSTS.includes(bindHost) ? LOOPBACK_HOSTS : [bindHost];
+
+  return (req, res) => {
+    const authority = req.headers.host?.toLowerCase();
+    const origin = req.headers.origin;
+    const port = req.socket.localPort;
+    const localAddress = req.socket.localAddress;
+    const allowedHosts = wildcard && localAddress
+      ? [...hosts, formatHttpHostname(localAddress), localAddress.replace(/^::ffff:(?=\d+\.)/i, '')]
+      : hosts;
+    const allowedAuthority = authority && port && allowedHosts.some((name) =>
+      authority === `${name}:${port}` || (port === 80 && authority === name)
+    );
+    const sameOrigin = origin === undefined || (
+      typeof origin === 'string' && origin === `http://${port === 80 ? authority?.replace(/:80$/, '') : authority}`
+    );
+
+    if (!allowedAuthority || !sameOrigin || req.headersDistinct.host?.length !== 1 ||
+        (req.headersDistinct.origin?.length ?? 0) > 1) {
+      res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' });
+      res.end('Forbidden');
+      return;
+    }
+    listener(req, res);
+  };
+}
+
 /** Start a Streamable HTTP server exposing:
  *  - MCP endpoint (POST/GET/DELETE) at {endpoint}
  *  - Log ingest/diagnostics at {logsRoute} (POST to append, GET to view)
@@ -109,9 +148,7 @@ export async function startHttpServer(
   // One Streamable HTTP transport per process (supports multiple clients via sessions)
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => randomUUID(),
-    enableJsonResponse: true,
-    // Keep permissive by default for local dev; DNS rebinding protection can be enabled by deployers
-    enableDnsRebindingProtection: false
+    enableJsonResponse: true
   });
 
   await mcp.connect(transport);
@@ -119,18 +156,6 @@ export async function startHttpServer(
   // MCP endpoint: POST (requests/notifications) and GET (SSE stream)
   router.use(opts.endpoint, defineEventHandler(async (event) => {
     try {
-      // CORS / headers
-      try {
-        const res = event.node.res;
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader(
-          'Access-Control-Allow-Headers',
-          'content-type, accept, mcp-session-id, Mcp-Session-Id, mcp-protocol-version, MCP-Protocol-Version'
-        );
-        res.setHeader('Access-Control-Allow-Methods', 'POST, GET, DELETE, OPTIONS');
-        res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id');
-      } catch {}
-
       const method = String(event.node.req.method || '').toUpperCase();
       if (method === 'OPTIONS') {
         setResponseStatus(event, 204);
@@ -168,7 +193,7 @@ export async function startHttpServer(
         // Validate MCP-Protocol-Version if provided (allow missing for backwards-compat)
         try {
           const ver = String((event.node.req.headers['mcp-protocol-version'] as any) || '').trim();
-          if (ver && !['2025-06-18','2025-03-26','2024-11-05'].includes(ver)) {
+          if (ver && !SUPPORTED_PROTOCOL_VERSIONS.includes(ver)) {
             setResponseStatus(event, 400);
             try { event.node.res.setHeader('content-type','application/json'); } catch {}
             return JSON.stringify({ jsonrpc: '2.0', error: { code: -32600, message: 'Unsupported MCP-Protocol-Version' }, id: null });
@@ -209,7 +234,7 @@ export async function startHttpServer(
 
   app.use(router);
 
-  const nodeServer = createNodeServer(toNodeListener(app));
+  const nodeServer = createNodeServer(guardedHttpListener(opts.host, toNodeListener(app)));
 
   // Long-lived SSE stability
   try {
@@ -225,13 +250,15 @@ export async function startHttpServer(
   } catch {}
 
   await new Promise<void>((resolve) => nodeServer.listen(opts.port, opts.host, () => resolve()));
+  const address = nodeServer.address();
+  const actualPort = address && typeof address === 'object' ? address.port : opts.port;
   // For Streamable HTTP, we intentionally do not write project JSON here. The per-project
   // source of truth is written by the stdio ingest server only.
 
   // eslint-disable-next-line no-console
-  console.log(`MCP (Streamable HTTP) listening → http://${opts.host}:${opts.port}${opts.endpoint}`);
+  console.log(`MCP (Streamable HTTP) listening → http://${formatHttpHostname(opts.host)}:${actualPort}${opts.endpoint}`);
   // eslint-disable-next-line no-console
-  console.log(`Log ingest endpoint        → http://${opts.host}:${opts.port}${opts.logsRoute}`);
+  console.log(`Log ingest endpoint        → http://${formatHttpHostname(opts.host)}:${actualPort}${opts.logsRoute}`);
 }
 
 /** Start a minimal HTTP server exposing ONLY:
@@ -300,7 +327,7 @@ export async function startIngestOnlyServer(
   }
 
   // Prefer requested port (usually 5179); fall back to ephemeral if it's taken
-  let nodeServer = createNodeServer(toNodeListener(app));
+  let nodeServer = createNodeServer(guardedHttpListener(opts.host, toNodeListener(app)));
   configureNodeServer(nodeServer);
 
   let actualPort: number;
@@ -310,7 +337,7 @@ export async function startIngestOnlyServer(
     const isAddrInUse = err && (err.code === 'EADDRINUSE' || String(err.message || '').includes('EADDRINUSE'));
     if (isAddrInUse && opts.port !== 0) {
       try { nodeServer.close?.(); } catch {}
-      nodeServer = createNodeServer(toNodeListener(app));
+      nodeServer = createNodeServer(guardedHttpListener(opts.host, toNodeListener(app)));
       configureNodeServer(nodeServer);
       actualPort = await listenWithResult(nodeServer, opts.host, 0);
     } else {
@@ -322,12 +349,12 @@ export async function startIngestOnlyServer(
   writeProjectJson(opts.host, actualPort, opts.logsRoute);
 
   // eslint-disable-next-line no-console
-  console.error(`Log ingest endpoint        → http://${opts.host}:${actualPort}${opts.logsRoute}`);
+  console.error(`Log ingest endpoint        → http://${formatHttpHostname(opts.host)}:${actualPort}${opts.logsRoute}`);
 }
 
 function writeProjectJson(host: string, port: number, route: `/${string}`) {
   try {
-    const baseUrl = `http://${host}:${port}`;
+    const baseUrl = `http://${formatHttpHostname(host)}:${port}`;
     const payload = JSON.stringify({ url: baseUrl, route, timestamp: Date.now(), pid: typeof process !== 'undefined' ? process.pid : undefined });
     const file = joinPath(process.cwd(), '.browser-echo-mcp.json');
     const tmp = file + '.tmp';

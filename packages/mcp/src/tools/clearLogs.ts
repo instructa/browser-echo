@@ -5,10 +5,12 @@ import { validateSessionId } from '../store';
 export function registerClearLogsTool(ctx: McpToolContext) {
   const { mcp, store } = ctx;
 
-  mcp.tool(
+  mcp.registerTool(
     'clear_logs',
-    'Clears the stored frontend browser console log buffer for fresh capture. Defaults to hard clear.',
-    ClearLogsSchema,
+    {
+      description: 'Clears the stored frontend browser console log buffer for fresh capture. Defaults to hard clear.',
+      inputSchema: ClearLogsSchema,
+    },
     async (args, _extra) => {
       const safeArgs = args || {} as any;
       const { session, scope = 'hard' } = safeArgs;

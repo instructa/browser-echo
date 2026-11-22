@@ -99,7 +99,7 @@ export async function startMcpServer(options: {
 
   // Start Streamable HTTP transport on specified or default host/port
   const host = options.host || '127.0.0.1';
-  const port = options.port || 5179;
+  const port = options.port ?? 5179;
   const endpoint = options.endpoint || '/mcp';
   const logsRoute = options.logsRoute || '/__client-logs';
   await startHttpServer(mcp, store, { host, port, endpoint, logsRoute });

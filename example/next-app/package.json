@@ -9,12 +9,12 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "next": "15.5.28",
+    "next": "15.5.29",
     "react": "19.1.1",
     "react-dom": "19.1.1"
   },
   "devDependencies": {
-    "@browser-echo/mcp": "1.1.0",
+    "@browser-echo/mcp": "workspace:*",
     "@browser-echo/next": "1.1.0",
     "@eslint/eslintrc": "3.3.5",
     "@tailwindcss/postcss": "4.3.0",

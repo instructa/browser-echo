@@ -14,6 +14,7 @@ describe('E2E: Next route → MCP ingest', () => {
   let oldCwd: string;
   let workDir: string;
   beforeAll(async () => {
+    vi.stubEnv('NODE_ENV', 'development');
     await startMcpServer({ name: 'tests', version: 'test', host: HOST, port: PORT, endpoint: '/mcp', logsRoute: '/__client-logs' });
     // Use isolated cwd per suite and write project json so Next route forwards to our test server
     oldCwd = process.cwd();
@@ -27,6 +28,7 @@ describe('E2E: Next route → MCP ingest', () => {
   }, 30_000);
 
   afterAll(async () => {
+    vi.unstubAllEnvs();
     process.env = oldEnv;
     try { rmSync(join(workDir, '.browser-echo-mcp.json')); } catch {}
     try { process.chdir(oldCwd); } catch {}

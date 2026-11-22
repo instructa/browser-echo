@@ -74,15 +74,18 @@ describe('Discovery behavior (local file + port 5179)', () => {
     expect(logs.length).toBeGreaterThan(0);
   });
 
-  it('honors local discovery and forwards', async () => {
+  it.each([
+    ['http://127.0.0.1:59992', true],
+    ['http://localhost.example.test:59992', false],
+  ])('forwards only to a local discovery authority (%s)', async (url, local) => {
     writeLocalDiscovery({
-      url: 'http://127.0.0.1:59992',
+      url,
       route: '/__client-logs',
       timestamp: Date.now(),
       pid: 999998
     });
 
-    const fetchSpy = vi.fn(async (url: any) => {
+    const fetchSpy = vi.fn(async (url: any, _init?: RequestInit) => {
       const u = String(url);
       if (u.endsWith('/health')) return { ok: true } as any; // make discovery healthy
       return { ok: true } as any;
@@ -108,11 +111,16 @@ describe('Discovery behavior (local file + port 5179)', () => {
     fn(req, res, () => {});
     await done;
 
-    // Should have forwarded to discovered ingest
-    const calls = fetchSpy.mock.calls.map((c: any[]) => String(c[0]));
-    expect(calls.some((u: string) => u === 'http://127.0.0.1:59992/__client-logs')).toBe(true);
-    // Terminal should be suppressed (no direct log message with payload text)
-    expect(logs.some(([, m]) => m.includes('hi fwd'))).toBe(false);
+    if (local) {
+      expect(fetchSpy.mock.calls.map(([target]) => target)).toEqual([
+        `${url}/health`,
+        `${url}/__client-logs`,
+      ]);
+      for (const [, init] of fetchSpy.mock.calls) expect(init?.redirect).toBe('error');
+    } else {
+      expect(fetchSpy).not.toHaveBeenCalled();
+    }
+    expect(logs.some(([, m]) => m.includes('hi fwd'))).toBe(!local);
   });
 });
 

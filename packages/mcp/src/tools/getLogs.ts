@@ -5,10 +5,12 @@ import { validateSessionId } from '../store';
 export function registerGetLogsTool(ctx: McpToolContext) {
   const { mcp, store } = ctx;
 
-  mcp.tool(
+  mcp.registerTool(
     'get_logs',
-    'Fetch recent frontend browser console logs (errors/warnings/info). Use this when checking hydration errors, network failures, or React/Next warnings.',
-    GetLogsSchema,
+    {
+      description: 'Fetch recent frontend browser console logs (errors/warnings/info). Use this when checking hydration errors, network failures, or React/Next warnings.',
+      inputSchema: GetLogsSchema,
+    },
     async (args, _extra) => {
       // Ensure args is always an object to prevent destructuring issues
       const safeArgs = args || {} as any;
