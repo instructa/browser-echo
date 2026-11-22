@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-11-22
+
+### Security
+- Limit the Next.js log route to development and keep automatic MCP forwarding on validated loopback targets without redirects.
+- Validate Host and Origin across the MCP HTTP listeners and remove permissive CORS.
+- Update dependencies to address known advisories.
+
 ## [1.1.0] - 2025-09-22
 
 ### Added
